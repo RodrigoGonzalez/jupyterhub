@@ -163,8 +163,7 @@ class FormSpawner(MockSpawner):
     options_form = "IMAFORM"
     
     def options_from_form(self, form_data):
-        options = {}
-        options['notspecified'] = 5
+        options = {'notspecified': 5}
         if 'bounds' in form_data:
             options['bounds'] = [int(i) for i in form_data['bounds']]
         if 'energy' in form_data:
@@ -237,8 +236,7 @@ class MockHub(JupyterHub):
     @default('port')
     def _port_default(self):
         if self.subdomain_host:
-            port = urlparse(self.subdomain_host).port
-            if port:
+            if port := urlparse(self.subdomain_host).port:
                 return port
         return random_port()
 
@@ -310,7 +308,8 @@ class MockHub(JupyterHub):
     def login_user(self, name):
         """Login a user by name, returning her cookies."""
         base_url = public_url(self)
-        r = yield async_requests.post(base_url + 'hub/login',
+        r = yield async_requests.post(
+            f'{base_url}hub/login',
             data={
                 'username': name,
                 'password': name,
@@ -333,18 +332,12 @@ def public_host(app):
 def public_url(app, user_or_service=None, path=''):
     """Return the full, public base URL (including prefix) of the given JupyterHub instance."""
     if user_or_service:
-        if app.subdomain_host:
-            host = user_or_service.host
-        else:
-            host = public_host(app)
+        host = user_or_service.host if app.subdomain_host else public_host(app)
         prefix = user_or_service.prefix
     else:
         host = public_host(app)
         prefix = Server.from_url(app.proxy.public_url).base_url
-    if path:
-        return host + url_path_join(prefix, path)
-    else:
-        return host + prefix
+    return host + url_path_join(prefix, path) if path else host + prefix
 
 
 # single-user-server mocking:
@@ -400,8 +393,5 @@ class StubSingleUserSpawner(MockSpawner):
     def poll(self):
         if self._thread is None:
             return 0
-        if self._thread.is_alive():
-            return None
-        else:
-            return 0
+        return None if self._thread.is_alive() else 0
 

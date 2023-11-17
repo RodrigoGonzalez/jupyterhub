@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """The multi-user notebook application"""
 
+
 # Copyright (c) Jupyter Development Team.
 # Distributed under the terms of the Modified BSD License.
 
@@ -22,7 +23,7 @@ from urllib.parse import unquote, urlparse, urlunparse
 
 
 if sys.version_info[:2] < (3, 3):
-    raise ValueError("Python < 3.3 not supported: %s" % sys.version)
+    raise ValueError(f"Python < 3.3 not supported: {sys.version}")
 
 
 from dateutil.parser import parse as parse_date
@@ -164,10 +165,11 @@ class NewToken(Application):
         def init_users():
             loop = asyncio.new_event_loop()
             loop.run_until_complete(hub.init_users())
+
         ThreadPoolExecutor(1).submit(init_users).result()
         user = orm.User.find(hub.db, self.name)
         if user is None:
-            print("No such user: %s" % self.name, file=sys.stderr)
+            print(f"No such user: {self.name}", file=sys.stderr)
             self.exit(1)
         token = user.new_api_token(note="command-line generated")
         print(token)
@@ -397,7 +399,7 @@ class JupyterHub(Application):
         if new and '://' not in new:
             # host should include '://'
             # if not specified, assume https: You have to be really explicit about HTTP!
-            self.subdomain_host = 'https://' + new
+            self.subdomain_host = f'https://{new}'
 
     domain = Unicode(
         help="domain name, e.g. 'example.com' (excludes protocol, port)"
@@ -405,9 +407,7 @@ class JupyterHub(Application):
 
     @default('domain')
     def _domain_default(self):
-        if not self.subdomain_host:
-            return ''
-        return urlparse(self.subdomain_host).hostname
+        return urlparse(self.subdomain_host).hostname if self.subdomain_host else ''
 
     logo_file = Unicode('',
         help="Specify path to a logo image to override the Jupyter logo in the banner."
@@ -456,10 +456,7 @@ class JupyterHub(Application):
     @observe('proxy_api_port', 'proxy_api_ip')
     def _deprecated_proxy_api(self, change):
         self.log.warning("JupyterHub.%s is deprecated in JupyterHub 0.8, use ConfigurableHTTPProxy.api_url", change.name)
-        self.config.ConfigurableHTTPProxy.api_url = 'http://{}:{}'.format(
-            self.proxy_api_ip or '127.0.0.1',
-            self.proxy_api_port or self.port + 1,
-        )
+        self.config.ConfigurableHTTPProxy.api_url = f"http://{self.proxy_api_ip or '127.0.0.1'}:{self.proxy_api_port or self.port + 1}"
 
     hub_port = Integer(8081,
         help="""The internal port for the Hub process.
@@ -771,7 +768,7 @@ class JupyterHub(Application):
         new = change['new']
         if '://' not in new:
             # assume sqlite, if given as a plain filename
-            self.db_url = 'sqlite:///%s' % new
+            self.db_url = f'sqlite:///{new}'
 
     db_kwargs = Dict(
         help="""Include any kwargs to pass to the database connection.
@@ -910,12 +907,9 @@ class JupyterHub(Application):
     def _statsd(self):
         if self.statsd_host:
             import statsd
-            client = statsd.StatsClient(
-                self.statsd_host,
-                self.statsd_port,
-                self.statsd_prefix
+            return statsd.StatsClient(
+                self.statsd_host, self.statsd_port, self.statsd_prefix
             )
-            return client
         else:
             # return an empty mock object!
             return EmptyClass()
@@ -990,17 +984,24 @@ class JupyterHub(Application):
         # add any user configurable handlers.
         h.extend(self.extra_handlers)
 
-        h.append((r'/logo', LogoHandler, {'path': self.logo_file}))
-        h.append((r'/api/(.*)', apihandlers.base.API404))
-
+        h.extend(
+            (
+                (r'/logo', LogoHandler, {'path': self.logo_file}),
+                (r'/api/(.*)', apihandlers.base.API404),
+            )
+        )
         self.handlers = self.add_url_prefix(self.hub_prefix, h)
         # some extra handlers, outside hub_prefix
-        self.handlers.extend([
-            # add trailing / to ``/user|services/:name`
-            (r"%s(user|services)/([^/]+)" % self.base_url, handlers.AddSlashHandler),
-            (r"(?!%s).*" % self.hub_prefix, handlers.PrefixRedirectHandler),
-            (r'(.*)', handlers.Template404),
-        ])
+        self.handlers.extend(
+            [
+                (
+                    f"{self.base_url}(user|services)/([^/]+)",
+                    handlers.AddSlashHandler,
+                ),
+                (f"(?!{self.hub_prefix}).*", handlers.PrefixRedirectHandler),
+                (r'(.*)', handlers.Template404),
+            ]
+        )
 
     def _check_db_path(self, path):
         """More informative log messages for failed filesystem access"""
@@ -1134,11 +1135,7 @@ class JupyterHub(Application):
         # use `/` with host-based routing so the Hub
         # gets requests for all hosts
         host = ''
-        if self.subdomain_host:
-            routespec = '/'
-        else:
-            routespec = self.base_url
-
+        routespec = '/' if self.subdomain_host else self.base_url
         self.hub = Hub(routespec=routespec, **hub_args)
 
         if self.hub_connect_ip:
@@ -1170,7 +1167,7 @@ class JupyterHub(Application):
             try:
                 ck.check_available()
             except Exception as e:
-                self.exit("auth_state is enabled, but encryption is not available: %s" % e)
+                self.exit(f"auth_state is enabled, but encryption is not available: {e}")
 
         if self.admin_users and not self.authenticator.admin_users:
             self.log.warning(
@@ -1346,9 +1343,9 @@ class JupyterHub(Application):
     def init_services(self):
         self._service_map.clear()
         if self.domain:
-            domain = 'services.' + self.domain
+            domain = f'services.{self.domain}'
             parsed = urlparse(self.subdomain_host)
-            host = '%s://services.%s' % (parsed.scheme, parsed.netloc)
+            host = f'{parsed.scheme}://services.{parsed.netloc}'
         else:
             domain = host = ''
 
@@ -1374,20 +1371,16 @@ class JupyterHub(Application):
             traits = service.traits(input=True)
             for key, value in spec.items():
                 if key not in traits:
-                    raise AttributeError("No such service field: %s" % key)
+                    raise AttributeError(f"No such service field: {key}")
                 setattr(service, key, value)
 
-            if service.managed:
-                if not service.api_token:
-                    # generate new token
-                    # TODO: revoke old tokens?
-                    service.api_token = service.orm.new_api_token(note="generated at startup")
-                else:
-                    # ensure provided token is registered
-                    self.service_tokens[service.api_token] = service.name
+            if service.managed and not service.api_token:
+                # generate new token
+                # TODO: revoke old tokens?
+                service.api_token = service.orm.new_api_token(note="generated at startup")
             else:
+                # ensure provided token is registered
                 self.service_tokens[service.api_token] = service.name
-
             if service.url:
                 parsed = urlparse(service.url)
                 if parsed.port is not None:
@@ -1413,7 +1406,7 @@ class JupyterHub(Application):
                     client_id=service.oauth_client_id,
                     client_secret=service.api_token,
                     redirect_uri=service.oauth_redirect_uri,
-                    description="JupyterHub service %s" % service.name,
+                    description=f"JupyterHub service {service.name}",
                 )
 
             self._service_map[name] = service
@@ -1446,7 +1439,7 @@ class JupyterHub(Application):
                 parts.append('admin')
             for name, spawner in sorted(user.orm_spawners.items(), key=itemgetter(0)):
                 if spawner.server:
-                    parts.append('%s:%s running at %s' % (user.name, name, spawner.server))
+                    parts.append(f'{user.name}:{name} running at {spawner.server}')
             return ' '.join(parts)
 
         async def user_stopped(user, server_name):
@@ -1519,10 +1512,11 @@ class JupyterHub(Application):
 
         This should mainly be services that have been removed from configuration or renamed.
         """
-        oauth_client_ids = set()
-        for service in self._service_map.values():
-            if service.oauth_available:
-                oauth_client_ids.add(service.oauth_client_id)
+        oauth_client_ids = {
+            service.oauth_client_id
+            for service in self._service_map.values()
+            if service.oauth_available
+        }
         for user in self.users.values():
             for spawner in user.spawners.values():
                 oauth_client_ids.add(spawner.oauth_client_id)
@@ -1642,8 +1636,8 @@ class JupyterHub(Application):
             self.log.debug("Could not load pycurl: %s\npycurl is recommended if you have a large number of users.", e)
 
     def write_pid_file(self):
-        pid = os.getpid()
         if self.pid_file:
+            pid = os.getpid()
             self.log.debug("Writing PID %i to %s", pid, self.pid_file)
             with open(self.pid_file, 'w') as f:
                 f.write('%i' % pid)
@@ -1713,8 +1707,9 @@ class JupyterHub(Application):
 
         futures = []
 
-        managed_services = [ s for s in self._service_map.values() if s.managed ]
-        if managed_services:
+        if managed_services := [
+            s for s in self._service_map.values() if s.managed
+        ]:
             self.log.info("Cleaning up %i services...", len(managed_services))
             for service in managed_services:
                 await service.stop()
@@ -1723,9 +1718,11 @@ class JupyterHub(Application):
             self.log.info("Cleaning up single-user servers...")
             # request (async) process termination
             for uid, user in self.users.items():
-                for name, spawner in list(user.spawners.items()):
-                    if spawner.active:
-                        futures.append(asyncio.ensure_future(user.stop(name)))
+                futures.extend(
+                    asyncio.ensure_future(user.stop(name))
+                    for name, spawner in list(user.spawners.items())
+                    if spawner.active
+                )
         else:
             self.log.info("Leaving single-user servers running")
 
@@ -1766,12 +1763,13 @@ class JupyterHub(Application):
             answer = ''
 
             def ask():
-                prompt = "Overwrite %s with default config? [y/N]" % self.config_file
+                prompt = f"Overwrite {self.config_file} with default config? [y/N]"
                 try:
                     return input(prompt).lower() or 'n'
                 except KeyboardInterrupt:
                     print('')  # empty line
                     return 'n'
+
             answer = ask()
             while not answer.startswith(('y', 'n')):
                 print("Please answer 'yes' or 'no'")
@@ -1782,7 +1780,7 @@ class JupyterHub(Application):
         config_text = self.generate_config_file()
         if isinstance(config_text, bytes):
             config_text = config_text.decode('utf8')
-        print("Writing default config to: %s" % self.config_file)
+        print(f"Writing default config to: {self.config_file}")
         with open(self.config_file, mode='w') as f:
             f.write(config_text)
 
@@ -1816,10 +1814,7 @@ class JupyterHub(Application):
                 # strip timezone info to naïve UTC datetime
                 dt = dt.astimezone(timezone.utc).replace(tzinfo=None)
 
-            if user.last_activity:
-                user.last_activity = max(user.last_activity, dt)
-            else:
-                user.last_activity = dt
+            user.last_activity = max(user.last_activity, dt) if user.last_activity else dt
             if spawner.last_activity:
                 spawner.last_activity = max(spawner.last_activity, dt)
             else:
@@ -1864,10 +1859,7 @@ class JupyterHub(Application):
                 ip = bind_url.hostname
                 port = bind_url.port
                 if not port:
-                    if bind_url.scheme == 'https':
-                        port = 443
-                    else:
-                        port = 80
+                    port = 443 if bind_url.scheme == 'https' else 80
                 self.http_server.listen(port, address=ip)
             self.log.info("Hub API listening on %s", self.hub.bind_url)
             if self.hub.url != self.hub.bind_url:
@@ -1888,7 +1880,7 @@ class JupyterHub(Application):
 
         # start the service(s)
         for service_name, service in self._service_map.items():
-            msg = '%s at %s' % (service_name, service.url) if service.url else service_name
+            msg = f'{service_name} at {service.url}' if service.url else service_name
             if service.managed:
                 self.log.info("Starting managed service %s", msg)
                 try:

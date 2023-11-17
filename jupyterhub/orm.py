@@ -79,7 +79,7 @@ class Server(Base):
     cookie_name = Column(Unicode(255), default='cookie')
 
     def __repr__(self):
-        return "<Server(%s:%s)>" % (self.ip, self.port)
+        return f"<Server({self.ip}:{self.port})>"
 
 
 # user:group many:many mapping table
@@ -313,9 +313,8 @@ class Hashed(object):
             raise ValueError("Tokens must be at least %i characters, got %r" % (
                 cls.min_length, token)
             )
-        found = cls.find(db, token)
-        if found:
-            raise ValueError("Collision on token: %s..." % token[:cls.prefix_length])
+        if found := cls.find(db, token):
+            raise ValueError(f"Collision on token: {token[:cls.prefix_length]}...")
 
     @classmethod
     def find_prefix(cls, db, token):
@@ -409,7 +408,7 @@ class APIToken(Hashed, Base):
         """
         prefix_match = cls.find_prefix(db, token)
         prefix_match = prefix_match.filter(
-            or_(cls.expires_at == None, cls.expires_at >= utcnow())
+            or_(cls.expires_at is None, cls.expires_at >= utcnow())
         )
         if kind == 'user':
             prefix_match = prefix_match.filter(cls.user_id != None)
@@ -698,7 +697,6 @@ def check_db_revision(engine):
     alembic_revision = engine.execute('SELECT version_num FROM alembic_version').first()[0]
     if alembic_revision == head:
         app_log.debug("database schema version found: %s", alembic_revision)
-        pass
     else:
         raise DatabaseSchemaMismatch("Found database schema version {found} != {head}. "
         "Backup your database and run `jupyterhub upgrade-db`"
@@ -716,11 +714,10 @@ def mysql_large_prefix_check(engine):
         'show variables where variable_name like '
         '"innodb_large_prefix" or '
         'variable_name like "innodb_file_format";').fetchall())
-    if (variables['innodb_file_format'] == 'Barracuda' and
-        variables['innodb_large_prefix'] == 'ON'):
-        return True
-    else:
-        return False
+    return (
+        variables['innodb_file_format'] == 'Barracuda'
+        and variables['innodb_large_prefix'] == 'ON'
+    )
 
 
 def add_row_format(base):
@@ -760,11 +757,7 @@ def new_session_factory(url="sqlite:///:memory:",
 
     Base.metadata.create_all(engine)
 
-    # We set expire_on_commit=False, since we don't actually need
-    # SQLAlchemy to expire objects after committing - we don't expect
-    # concurrent runs of the hub talking to the same db. Turning
-    # this off gives us a major performance boost
-    session_factory = sessionmaker(bind=engine,
-                                   expire_on_commit=expire_on_commit,
+    return sessionmaker(
+        bind=engine,
+        expire_on_commit=expire_on_commit,
     )
-    return session_factory

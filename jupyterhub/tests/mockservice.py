@@ -43,8 +43,8 @@ class APIHandler(web.RequestHandler):
     def get(self, path):
         api_token = os.environ['JUPYTERHUB_API_TOKEN']
         api_url = os.environ['JUPYTERHUB_API_URL']
-        r = requests.get(api_url + path,
-            headers={'Authorization': 'token %s' % api_token},
+        r = requests.get(
+            api_url + path, headers={'Authorization': f'token {api_token}'}
         )
         r.raise_for_status()
         self.set_header('Content-Type', 'application/json')

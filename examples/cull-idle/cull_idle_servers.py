@@ -78,9 +78,9 @@ def format_td(td):
         return td
     seconds = int(td.total_seconds())
     h = seconds // 3600
-    seconds = seconds % 3600
+    seconds %= 3600
     m = seconds // 60
-    seconds = seconds % 60
+    seconds %= 60
     return "{h:02}:{m:02}:{seconds:02}".format(h=h, m=m, seconds=seconds)
 
 
@@ -90,13 +90,8 @@ def cull_idle(url, api_token, inactive_limit, cull_users=False, max_age=0, concu
 
     If cull_users, inactive *users* will be deleted as well.
     """
-    auth_header = {
-        'Authorization': 'token %s' % api_token,
-    }
-    req = HTTPRequest(
-        url=url + '/users',
-        headers=auth_header,
-    )
+    auth_header = {'Authorization': f'token {api_token}'}
+    req = HTTPRequest(url=f'{url}/users', headers=auth_header)
     now = datetime.now(timezone.utc)
     client = AsyncHTTPClient()
 
@@ -126,7 +121,7 @@ def cull_idle(url, api_token, inactive_limit, cull_users=False, max_age=0, concu
         """
         log_name = user['name']
         if server_name:
-            log_name = '%s/%s' % (user['name'], server_name)
+            log_name = f"{user['name']}/{server_name}"
         if server.get('pending'):
             app_log.warning(
                 "Not culling server %s with pending %s",
@@ -146,12 +141,7 @@ def cull_idle(url, api_token, inactive_limit, cull_users=False, max_age=0, concu
                 log_name, server)
             return False
 
-        if server.get('started'):
-            age = now - parse_date(server['started'])
-        else:
-            # started may be undefined on jupyterhub < 0.9
-            age = None
-
+        age = now - parse_date(server['started']) if server.get('started') else None
         # check last activity
         # last_activity can be None in 0.9
         if server['last_activity']:
@@ -188,11 +178,9 @@ def cull_idle(url, api_token, inactive_limit, cull_users=False, max_age=0, concu
 
         if server_name:
             # culling a named server
-            delete_url = url + "/users/%s/servers/%s" % (
-                quote(user['name']), quote(server['name'])
-            )
+            delete_url = f"{url}/users/{quote(user['name'])}/servers/{quote(server['name'])}"
         else:
-            delete_url = url + '/users/%s/server' % quote(user['name'])
+            delete_url = f"{url}/users/{quote(user['name'])}/server"
 
         req = HTTPRequest(
             url=delete_url, method='DELETE', headers=auth_header,
@@ -249,12 +237,7 @@ def cull_idle(url, api_token, inactive_limit, cull_users=False, max_age=0, concu
             return False
 
         should_cull = False
-        if user.get('created'):
-            age = now - parse_date(user['created'])
-        else:
-            # created may be undefined on jupyterhub < 0.9
-            age = None
-
+        age = now - parse_date(user['created']) if user.get('created') else None
         # check last activity
         # last_activity can be None in 0.9
         if user['last_activity']:
@@ -289,7 +272,7 @@ def cull_idle(url, api_token, inactive_limit, cull_users=False, max_age=0, concu
             return False
 
         req = HTTPRequest(
-            url=url + '/users/%s' % user['name'],
+            url=f"{url}/users/{user['name']}",
             method='DELETE',
             headers=auth_header,
         )

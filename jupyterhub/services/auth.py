@@ -63,13 +63,14 @@ class _ExpiringDict(dict):
     def __repr__(self):
         """include values and timestamps in repr"""
         now = time.monotonic()
-        return repr({
-            key: '{value} (age={age:.0f}s)'.format(
-                value=repr(value)[:16] + '...',
-                age=now-self.timestamps[key],
-            )
-            for key, value in self.values.items()
-        })
+        return repr(
+            {
+                key: '{value} (age={age:.0f}s)'.format(
+                    value=f'{repr(value)[:16]}...', age=now - self.timestamps[key]
+                )
+                for key, value in self.values.items()
+            }
+        )
 
     def _check_age(self, key):
         """Check timestamp for a key"""
@@ -149,9 +150,9 @@ class HubAuth(SingletonConfigurable):
         """Ensure base_url starts and ends with /"""
         value = proposal['value']
         if not value.startswith('/'):
-            value = '/' + value
+            value = f'/{value}'
         if not value.endswith('/'):
-            value = value + '/'
+            value = f'{value}/'
         return value
 
     # where is the hub
@@ -163,8 +164,7 @@ class HubAuth(SingletonConfigurable):
     ).tag(config=True)
     @default('api_url')
     def _api_url(self):
-        env_url = os.getenv('JUPYTERHUB_API_URL')
-        if env_url:
+        if env_url := os.getenv('JUPYTERHUB_API_URL'):
             return env_url
         else:
             return 'http://127.0.0.1:8081' + url_path_join(self.hub_prefix, 'api')
@@ -211,9 +211,7 @@ class HubAuth(SingletonConfigurable):
 
     @default('cookie_options')
     def _default_cookie_options(self):
-        # load default from env
-        options_env = os.environ.get('JUPYTERHUB_COOKIE_OPTIONS')
-        if options_env:
+        if options_env := os.environ.get('JUPYTERHUB_COOKIE_OPTIONS'):
             return json.loads(options_env)
         else:
             return {}
@@ -260,7 +258,7 @@ class HubAuth(SingletonConfigurable):
             if cached is not None:
                 return cached
             else:
-                app_log.debug("Cache miss: %s" % cache_key)
+                app_log.debug(f"Cache miss: {cache_key}")
 
         data = self._api_request('GET', url, allow_404=True)
         if data is None:
@@ -276,16 +274,16 @@ class HubAuth(SingletonConfigurable):
         """Make an API request"""
         allow_404 = kwargs.pop('allow_404', False)
         headers = kwargs.setdefault('headers', {})
-        headers.setdefault('Authorization', 'token %s' % self.api_token)
+        headers.setdefault('Authorization', f'token {self.api_token}')
         try:
             r = requests.request(method, url, **kwargs)
         except requests.ConnectionError as e:
             app_log.error("Error connecting to %s: %s", self.api_url, e)
             msg = "Failed to connect to Hub API at %r." % self.api_url
-            msg += "  Is the Hub accessible at this URL (from host: %s)?" % socket.gethostname()
+            msg += f"  Is the Hub accessible at this URL (from host: {socket.gethostname()})?"
             if '127.0.0.1' in self.api_url:
                 msg += "  Make sure to set c.JupyterHub.hub_ip to an IP accessible to" + \
-                       " single-user servers if the servers are not on the same host as the Hub."
+                           " single-user servers if the servers are not on the same host as the Hub."
             raise HTTPError(500, msg)
 
         data = None
@@ -309,7 +307,7 @@ class HubAuth(SingletonConfigurable):
             except Exception:
                 pass
             else:
-                msg += ": " + description
+                msg += f": {description}"
             raise HTTPError(500, msg)
         else:
             data = r.json()
@@ -329,11 +327,13 @@ class HubAuth(SingletonConfigurable):
             The 'name' field contains the user's name.
         """
         return self._check_hub_authorization(
-            url=url_path_join(self.api_url,
-                          "authorizations/cookie",
-                          self.cookie_name,
-                          quote(encrypted_cookie, safe='')),
-            cache_key='cookie:{}:{}'.format(session_id, encrypted_cookie),
+            url=url_path_join(
+                self.api_url,
+                "authorizations/cookie",
+                self.cookie_name,
+                quote(encrypted_cookie, safe=''),
+            ),
+            cache_key=f'cookie:{session_id}:{encrypted_cookie}',
             use_cache=use_cache,
         )
 
@@ -350,10 +350,10 @@ class HubAuth(SingletonConfigurable):
             The 'name' field contains the user's name.
         """
         return self._check_hub_authorization(
-            url=url_path_join(self.api_url,
-                "authorizations/token",
-                quote(token, safe='')),
-            cache_key='token:{}:{}'.format(session_id, token),
+            url=url_path_join(
+                self.api_url, "authorizations/token", quote(token, safe='')
+            ),
+            cache_key=f'token:{session_id}:{token}',
             use_cache=use_cache,
         )
 
@@ -369,9 +369,9 @@ class HubAuth(SingletonConfigurable):
 
         user_token = handler.get_argument('token', '')
         if not user_token:
-            # get it from Authorization header
-            m = self.auth_header_pat.match(handler.request.headers.get(self.auth_header_name, ''))
-            if m:
+            if m := self.auth_header_pat.match(
+                handler.request.headers.get(self.auth_header_name, '')
+            ):
                 user_token = m.group(1)
         return user_token
 
@@ -412,9 +412,7 @@ class HubAuth(SingletonConfigurable):
         handler._cached_hub_user = user_model = None
         session_id = self.get_session_id(handler)
 
-        # check token first
-        token = self.get_token(handler)
-        if token:
+        if token := self.get_token(handler):
             user_model = self.user_for_token(token, session_id=session_id)
             if user_model:
                 handler._token_authenticated = True
@@ -461,7 +459,7 @@ class HubOAuth(HubAuth):
 
         This cookie is only live for the duration of the OAuth handshake.
         """
-        return self.cookie_name + '-oauth-state'
+        return f'{self.cookie_name}-oauth-state'
 
     def _get_user_cookie(self, handler):
         token = handler.get_secure_cookie(self.cookie_name)
@@ -489,7 +487,7 @@ class HubOAuth(HubAuth):
     @validate('oauth_client_id', 'api_token')
     def _ensure_not_empty(self, proposal):
         if not proposal.value:
-            raise ValueError("%s cannot be empty." % proposal.trait.name)
+            raise ValueError(f"{proposal.trait.name} cannot be empty.")
         return proposal.value
 
     oauth_redirect_uri = Unicode(
@@ -592,8 +590,8 @@ class HubOAuth(HubAuth):
             # use a randomized cookie suffix to avoid collisions
             # in case of concurrent logins
             app_log.warning("Detected unused OAuth state cookies")
-            cookie_suffix = ''.join(random.choice(string.ascii_letters) for i in range(8))
-            cookie_name = '{}-{}'.format(self.state_cookie_name, cookie_suffix)
+            cookie_suffix = ''.join(random.choice(string.ascii_letters) for _ in range(8))
+            cookie_name = f'{self.state_cookie_name}-{cookie_suffix}'
             extra_state['cookie_name'] = cookie_name
         else:
             cookie_name = self.state_cookie_name
@@ -855,10 +853,9 @@ class HubOAuthCallbackHandler(HubOAuthenticated, RequestHandler):
     
     @coroutine
     def get(self):
-        error = self.get_argument("error", False)
-        if error:
+        if error := self.get_argument("error", False):
             msg = self.get_argument("error_description", error)
-            raise HTTPError(400, "Error in oauth: %s" % msg)
+            raise HTTPError(400, f"Error in oauth: {msg}")
 
         code = self.get_argument("code", False)
         if not code:

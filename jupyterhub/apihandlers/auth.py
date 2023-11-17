@@ -39,7 +39,7 @@ class TokenAPIHandler(APIHandler):
         elif orm_token.service:
             model = self.service_model(orm_token.service)
         else:
-            self.log.warning("%s has no user or service. Deleting..." % orm_token)
+            self.log.warning(f"{orm_token} has no user or service. Deleting...")
             self.db.delete(orm_token)
             self.db.commit()
             raise web.HTTPError(404)
@@ -53,33 +53,30 @@ class TokenAPIHandler(APIHandler):
         ) % self.request.uri
         self.log.warning(warn_msg)
         requester = user = self.current_user
+        # allow requesting a token with username and password
+        # for authenticators where that's possible
+        data = self.get_json_body()
         if user is None:
-            # allow requesting a token with username and password
-            # for authenticators where that's possible
-            data = self.get_json_body()
             try:
                 requester = user = await self.login_user(data)
             except Exception as e:
-                self.log.error("Failure trying to authenticate with form data: %s" % e)
+                self.log.error(f"Failure trying to authenticate with form data: {e}")
                 user = None
             if user is None:
                 raise web.HTTPError(403)
-        else:
-            data = self.get_json_body()
-            # admin users can request tokens for other users
-            if data and data.get('username'):
-                user = self.find_user(data['username'])
-                if user is not requester and not requester.admin:
-                    raise web.HTTPError(403, "Only admins can request tokens for other users.")
-                if requester.admin and user is None:
-                    raise web.HTTPError(400, "No such user '%s'" % data['username'])
+        elif data and data.get('username'):
+            user = self.find_user(data['username'])
+            if user is not requester and not requester.admin:
+                raise web.HTTPError(403, "Only admins can request tokens for other users.")
+            if requester.admin and user is None:
+                raise web.HTTPError(400, f"No such user '{data['username']}'")
 
         note = (data or {}).get('note')
         if not note:
             note = "Requested via deprecated api"
             if requester is not user:
                 kind = 'user' if isinstance(user, User) else 'service'
-                note += " by %s %s" % (kind, requester.name)
+                note += f" by {kind} {requester.name}"
 
         api_token = user.new_api_token(note=note)
         self.write(json.dumps({
@@ -134,7 +131,11 @@ class OAuthHandler:
             return uri
         # make absolute local redirects full URLs
         # to satisfy oauthlib's absolute URI requirement
-        redirect_uri = self.request.protocol + "://" + self.request.headers['Host'] + redirect_uri
+        redirect_uri = (
+            f"{self.request.protocol}://"
+            + self.request.headers['Host']
+            + redirect_uri
+        )
         parsed_url = urlparse(uri)
         query_list = parse_qsl(parsed_url.query, keep_blank_values=True)
         for idx, item in enumerate(query_list):
@@ -152,11 +153,7 @@ class OAuthHandler:
 
         Adds user, session_id, client to oauth credentials
         """
-        if credentials is None:
-            credentials = {}
-        else:
-            credentials = credentials.copy()
-
+        credentials = {} if credentials is None else credentials.copy()
         session_id = self.get_session_cookie()
         if session_id is None:
             session_id = self.set_session_cookie()

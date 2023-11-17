@@ -39,7 +39,8 @@ def authenticated(f):
             return f(user, *args, **kwargs)
         else:
             # redirect to login url on failed auth
-            return redirect(auth.login_url + '?next=%s' % quote(request.path))
+            return redirect(f'{auth.login_url}?next={quote(request.path)}')
+
     return decorated
 
 

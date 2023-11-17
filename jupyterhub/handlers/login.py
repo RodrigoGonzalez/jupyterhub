@@ -14,8 +14,7 @@ from .base import BaseHandler
 class LogoutHandler(BaseHandler):
     """Log a user out by clearing their login cookie."""
     def get(self):
-        user = self.current_user
-        if user:
+        if user := self.current_user:
             self.log.info("User logged out: %s", user.name)
             self.clear_login_cookie()
             self.statsd.incr('logout')
@@ -44,8 +43,7 @@ class LoginHandler(BaseHandler):
 
     async def get(self):
         self.statsd.incr('login.request')
-        user = self.current_user
-        if user:
+        if user := self.current_user:
             # set new login cookie
             # because single-user cookie may have been cleared or incorrect
             self.set_login_cookie(user)
@@ -72,11 +70,10 @@ class LoginHandler(BaseHandler):
             self.finish(self._render(username=username))
 
     async def post(self):
-        # parse the arguments dict
-        data = {}
-        for arg in self.request.arguments:
-            data[arg] = self.get_argument(arg, strip=False)
-
+        data = {
+            arg: self.get_argument(arg, strip=False)
+            for arg in self.request.arguments
+        }
         auth_timer = self.statsd.timer('login.authenticate').start()
         user = await self.login_user(data)
         auth_timer.stop(send=False)

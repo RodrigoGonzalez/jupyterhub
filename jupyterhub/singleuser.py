@@ -66,9 +66,7 @@ class HubAuthenticatedHandler(HubOAuthenticated):
 
     @property
     def hub_groups(self):
-        if self.settings['group']:
-            return { self.settings['group'] }
-        return set()
+        return { self.settings['group'] } if self.settings['group'] else set()
 
 
 class JupyterHubLoginHandler(LoginHandler):
@@ -130,13 +128,10 @@ aliases.update({
     'base-url': 'SingleUserNotebookApp.base_url',
 })
 flags = dict(notebook_flags)
-flags.update({
-    'disable-user-config': ({
-        'SingleUserNotebookApp': {
-            'disable_user_config': True
-        }
-    }, "Disable user-controlled configuration of the notebook server.")
-})
+flags['disable-user-config'] = (
+    {'SingleUserNotebookApp': {'disable_user_config': True}},
+    "Disable user-controlled configuration of the notebook server.",
+)
 
 page_template = """
 {% extends "templates/page.html" %}
@@ -248,7 +243,7 @@ class SingleUserNotebookApp(NotebookApp):
     @default('hub_prefix')
     def _hub_prefix_default(self):
         base_url = os.environ.get('JUPYTERHUB_BASE_URL') or '/'
-        return base_url + 'hub/'
+        return f'{base_url}hub/'
 
     hub_api_url = Unicode().tag(config=True)
 
@@ -267,9 +262,9 @@ class SingleUserNotebookApp(NotebookApp):
         """ensure base_url starts and ends with /"""
         value = proposal.value
         if not value.startswith('/'):
-            value = '/' + value
+            value = f'/{value}'
         if not value.endswith('/'):
-            value = value + '/'
+            value = f'{value}/'
         return value
 
     @default('port')
@@ -443,10 +438,10 @@ class SingleUserNotebookApp(NotebookApp):
         headers = s.setdefault('headers', {})
         headers['X-JupyterHub-Version'] = __version__
         # set CSP header directly to workaround bugs in jupyter/notebook 5.0
-        headers.setdefault('Content-Security-Policy', ';'.join([
-            "frame-ancestors 'self'",
-            "report-uri " + csp_report_uri,
-        ]))
+        headers.setdefault(
+            'Content-Security-Policy',
+            ';'.join(["frame-ancestors 'self'", f"report-uri {csp_report_uri}"]),
+        )
         super(SingleUserNotebookApp, self).init_webapp()
 
         # add OAuth callback
@@ -454,7 +449,7 @@ class SingleUserNotebookApp(NotebookApp):
             urlparse(self.hub_auth.oauth_redirect_uri).path,
             OAuthCallbackHandler
         )])
-        
+
         # apply X-JupyterHub-Version to *all* request handlers (even redirects)
         self.patch_default_headers()
         self.patch_templates()

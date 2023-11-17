@@ -66,10 +66,7 @@ class Spawner(LoggingConfigurable):
 
         Used in logging for consistency with named servers.
         """
-        if self.name:
-            return '%s:%s' % (self.user.name, self.name)
-        else:
-            return self.user.name
+        return f'{self.user.name}:{self.name}' if self.name else self.user.name
 
     @property
     def pending(self):
@@ -89,11 +86,7 @@ class Spawner(LoggingConfigurable):
 
         A server is not ready if an event is pending.
         """
-        if self.pending:
-            return False
-        if self.server is None:
-            return False
-        return True
+        return False if self.pending else self.server is not None
 
     @property
     def active(self):
@@ -122,14 +115,14 @@ class Spawner(LoggingConfigurable):
     def __init_subclass__(cls, **kwargs):
         super().__init_subclass__()
 
-        missing = []
-        for attr in ('start','stop', 'poll'):
-            if getattr(Spawner, attr) is getattr(cls, attr):
-                missing.append(attr)
-
-        if missing:
-            raise NotImplementedError("class `{}` needs to redefine the `start`,"
-                  "`stop` and `poll` methods. `{}` not redefined.".format(cls.__name__, '`, `'.join(missing)))
+        if missing := [
+            attr
+            for attr in ('start', 'stop', 'poll')
+            if getattr(Spawner, attr) is getattr(cls, attr)
+        ]:
+            raise NotImplementedError(
+                f"class `{cls.__name__}` needs to redefine the `start`,`stop` and `poll` methods. `{'`, `'.join(missing)}` not redefined."
+            )
 
     proxy_spec = Unicode()
 
@@ -152,16 +145,11 @@ class Spawner(LoggingConfigurable):
                 # delete the old value
                 db = inspect(self.orm_spawner.server).session
                 db.delete(self.orm_spawner.server)
-            if server is None:
-                self.orm_spawner.server = None
-            else:
-                self.orm_spawner.server = server.orm_server
+            self.orm_spawner.server = None if server is None else server.orm_server
 
     @property
     def name(self):
-        if self.orm_spawner:
-            return self.orm_spawner.name
-        return ''
+        return self.orm_spawner.name if self.orm_spawner else ''
     admin_access = Bool(False)
     api_token = Unicode()
     oauth_client_id = Unicode()
@@ -569,8 +557,7 @@ class Spawner(LoggingConfigurable):
         state: dict
              a JSONable dict of state
         """
-        state = {}
-        return state
+        return {}
 
     def clear_state(self):
         """Clear any state that should be cleared when the single-user server stops.
@@ -594,7 +581,9 @@ class Spawner(LoggingConfigurable):
         """
         env = {}
         if self.env:
-            warnings.warn("Spawner.env is deprecated, found %s" % self.env, DeprecationWarning)
+            warnings.warn(
+                f"Spawner.env is deprecated, found {self.env}", DeprecationWarning
+            )
             env.update(self.env)
 
         for key in self.env_keep:
@@ -606,11 +595,7 @@ class Spawner(LoggingConfigurable):
         # will be assigned to the environment variable. This will be called at
         # spawn time.
         for key, value in self.environment.items():
-            if callable(value):
-                env[key] = value(self)
-            else:
-                env[key] = value
-
+            env[key] = value(self) if callable(value) else value
         env['JUPYTERHUB_API_TOKEN'] = self.api_token
         # deprecated (as of 0.7.2), for old versions of singleuser
         env['JPY_API_TOKEN'] = self.api_token
@@ -622,7 +607,7 @@ class Spawner(LoggingConfigurable):
             env['JUPYTERHUB_COOKIE_OPTIONS'] = json.dumps(self.cookie_options)
         env['JUPYTERHUB_HOST'] = self.hub.public_host
         env['JUPYTERHUB_OAUTH_CALLBACK_URL'] = \
-            url_path_join(self.user.url, self.name, 'oauth_callback')
+                url_path_join(self.user.url, self.name, 'oauth_callback')
 
         # Info previously passed on args
         env['JUPYTERHUB_USER'] = self.user.name
@@ -692,7 +677,7 @@ class Spawner(LoggingConfigurable):
         args = []
 
         if self.ip:
-            args.append('--ip="%s"' % self.ip)
+            args.append(f'--ip="{self.ip}"')
 
         if self.port:
             args.append('--port=%i' % self.port)
@@ -702,10 +687,10 @@ class Spawner(LoggingConfigurable):
 
         if self.notebook_dir:
             notebook_dir = self.format_string(self.notebook_dir)
-            args.append('--notebook-dir="%s"' % notebook_dir)
+            args.append(f'--notebook-dir="{notebook_dir}"')
         if self.default_url:
             default_url = self.format_string(self.default_url)
-            args.append('--NotebookApp.default_url="%s"' % default_url)
+            args.append(f'--NotebookApp.default_url="{default_url}"')
 
         if self.debug:
             args.append('--debug')
@@ -911,11 +896,11 @@ def _try_setcwd(path):
             os.chdir(path)
         except OSError as e:
             exc = e  # break exception instance out of except scope
-            print("Couldn't set CWD to %s (%s)" % (path, e), file=sys.stderr)
+            print(f"Couldn't set CWD to {path} ({exc})", file=sys.stderr)
             path, _ = os.path.split(path)
         else:
             return
-    print("Couldn't set CWD at all (%s), using temp dir" % exc, file=sys.stderr)
+    print(f"Couldn't set CWD at all ({exc}), using temp dir", file=sys.stderr)
     td = mkdtemp()
     os.chdir(td)
 
@@ -945,7 +930,7 @@ def set_user_setuid(username, chdir=True):
         try:
             os.setgroups(gids)
         except Exception as e:
-            print('Failed to set groups %s' % e, file=sys.stderr)
+            print(f'Failed to set groups {e}', file=sys.stderr)
         os.setuid(uid)
 
         # start in the user's home dir
@@ -1159,11 +1144,10 @@ class LocalProcessSpawner(Spawner):
         # send signal 0 to check if PID exists
         # this doesn't work on Windows, but that's okay because we don't support Windows.
         alive = await self._signal(0)
-        if not alive:
-            self.clear_state()
-            return 0
-        else:
+        if alive:
             return None
+        self.clear_state()
+        return 0
 
     async def _signal(self, sig):
         """Send given signal to a single-user server's process.

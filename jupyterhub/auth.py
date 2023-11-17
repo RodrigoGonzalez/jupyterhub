@@ -104,11 +104,10 @@ class Authenticator(LoggingConfigurable):
 
     @observe('whitelist')
     def _check_whitelist(self, change):
-        short_names = [name for name in change['new'] if len(name) <= 1]
-        if short_names:
+        if short_names := [name for name in change['new'] if len(name) <= 1]:
             sorted_names = sorted(short_names)
             single = ''.join(sorted_names)
-            string_set_typo = "set('%s')" % single
+            string_set_typo = f"set('{single}')"
             self.log.warning("whitelist contains single-character names: %s; did you mean set([%r]) instead of %s?",
                 sorted_names[:8], single, string_set_typo,
             )
@@ -214,10 +213,7 @@ class Authenticator(LoggingConfigurable):
 
         Names are normalized *before* being checked against the whitelist.
         """
-        if not self.whitelist:
-            # No whitelist means any name is allowed
-            return True
-        return username in self.whitelist
+        return True if not self.whitelist else username in self.whitelist
 
     def check_blacklist(self, username):
         """Check if a username is blocked to authenticate based on blacklist configuration
@@ -229,10 +225,7 @@ class Authenticator(LoggingConfigurable):
 
         .. versionadded: 0.9
         """
-        if not self.blacklist:
-            # No blacklist means any name is allowed
-            return True
-        return username not in self.blacklist
+        return True if not self.blacklist else username not in self.blacklist
 
     async def get_authenticated_user(self, handler, data):
         """Authenticate the user who is attempting to log in
@@ -275,17 +268,14 @@ class Authenticator(LoggingConfigurable):
 
         blacklist_pass = await maybe_future(self.check_blacklist(username))
         whitelist_pass = await maybe_future(self.check_whitelist(username))
-        if blacklist_pass:
-            pass
-        else:
+        if not blacklist_pass:
             self.log.warning("User %r in blacklist. Stop authentication", username)
             return
 
         if whitelist_pass:
             return authenticated
-        else:
-            self.log.warning("User %r not in whitelist.", username)
-            return
+        self.log.warning("User %r not in whitelist.", username)
+        return
 
     async def refresh_user(self, user):
         """Refresh auth data for a given user
@@ -377,7 +367,7 @@ class Authenticator(LoggingConfigurable):
             user (User): The User wrapper object
         """
         if not self.validate_username(user.name):
-            raise ValueError("Invalid username: %s" % user.name)
+            raise ValueError(f"Invalid username: {user.name}")
         if self.whitelist:
             self.whitelist.add(user.name)
 
@@ -538,7 +528,7 @@ class LocalAuthenticator(Authenticator):
             try:
                 group = getgrnam(grnam)
             except KeyError:
-                self.log.error('No such group: [%s]' % grnam)
+                self.log.error(f'No such group: [{grnam}]')
                 continue
             if username in group.gr_mem:
                 return True
@@ -554,7 +544,7 @@ class LocalAuthenticator(Authenticator):
             if self.create_system_users:
                 await maybe_future(self.add_system_user(user))
             else:
-                raise KeyError("User %s does not exist." % user.name)
+                raise KeyError(f"User {user.name} does not exist.")
 
         await maybe_future(super().add_user(user))
 
@@ -581,7 +571,7 @@ class LocalAuthenticator(Authenticator):
         p.wait()
         if p.returncode:
             err = p.stdout.read().decode('utf8', 'replace')
-            raise RuntimeError("Failed to create system user %s: %s" % (name, err))
+            raise RuntimeError(f"Failed to create system user {name}: {err}")
 
 
 class PAMAuthenticator(LocalAuthenticator):
@@ -710,7 +700,5 @@ class DummyAuthenticator(Authenticator):
     async def authenticate(self, handler, data):
         """Checks against a global password if it's been set. If not, allow any user/pass combo"""
         if self.password:
-            if data['password'] == self.password:
-                return data['username']
-            return None
+            return data['username'] if data['password'] == self.password else None
         return data['username']

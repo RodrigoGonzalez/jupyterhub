@@ -22,7 +22,7 @@ group_name = 'shared'
 c.JupyterHub.services = [
     {
         'name': service_name,
-        'url': 'http://127.0.0.1:{}'.format(service_port),
+        'url': f'http://127.0.0.1:{service_port}',
         'command': [
             'jupyterhub-singleuser',
             '--group=shared',

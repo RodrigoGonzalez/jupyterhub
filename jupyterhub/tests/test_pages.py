@@ -21,10 +21,7 @@ from .utils import async_requests
 
 
 def get_page(path, app, hub=True, **kw):
-    if hub:
-        prefix = app.hub.base_url
-    else:
-        prefix = app.base_url
+    prefix = app.hub.base_url if hub else app.base_url
     base_url = ujoin(public_host(app), prefix)
     return async_requests.get(ujoin(base_url, path), **kw)
 
@@ -54,7 +51,7 @@ def test_root_redirect(app):
     r = yield get_page(url, app, cookies=cookies)
     r.raise_for_status()
     path = urlparse(r.url).path
-    assert path == ujoin(app.base_url, 'user/%s/test.ipynb' % name)
+    assert path == ujoin(app.base_url, f'user/{name}/test.ipynb')
 
 
 @pytest.mark.gen_test
@@ -127,7 +124,7 @@ def test_admin(app):
 @pytest.mark.gen_test
 def test_admin_sort(app, sort):
     cookies = yield app.login_user('admin')
-    r = yield get_page('admin?sort=%s' % sort, app, cookies=cookies)
+    r = yield get_page(f'admin?sort={sort}', app, cookies=cookies)
     r.raise_for_status()
     assert r.status_code == 200
 
@@ -146,7 +143,7 @@ def test_spawn_redirect(app):
     r.raise_for_status()
     print(urlparse(r.url))
     path = urlparse(r.url).path
-    assert path == ujoin(app.base_url, 'user/%s/' % name)
+    assert path == ujoin(app.base_url, f'user/{name}/')
 
     # should have started server
     status = yield u.spawner.poll()
@@ -157,17 +154,17 @@ def test_spawn_redirect(app):
     r.raise_for_status()
     print(urlparse(r.url))
     path = urlparse(r.url).path
-    assert path == ujoin(app.base_url, '/user/%s/' % name)
+    assert path == ujoin(app.base_url, f'/user/{name}/')
 
     # stop server to ensure /user/name is handled by the Hub
     r = yield api_request(app, 'users', name, 'server', method='delete', cookies=cookies)
     r.raise_for_status()
 
     # test handing of trailing slash on `/user/name`
-    r = yield get_page('user/' + name, app, hub=False, cookies=cookies)
+    r = yield get_page(f'user/{name}', app, hub=False, cookies=cookies)
     r.raise_for_status()
     path = urlparse(r.url).path
-    assert path == ujoin(app.base_url, '/user/%s/' % name)
+    assert path == ujoin(app.base_url, f'/user/{name}/')
 
 
 @pytest.mark.gen_test
@@ -202,10 +199,10 @@ def test_spawn_admin_access(app, admin_access):
     name = 'mariel'
     user = add_user(app.db, app=app, name=name)
     app.db.commit()
-    r = yield get_page('user/' + name, app, cookies=cookies)
+    r = yield get_page(f'user/{name}', app, cookies=cookies)
     r.raise_for_status()
     assert (r.url.split('?')[0] + '/').startswith(public_url(app, user))
-    r = yield get_page('user/{}/env'.format(name), app, hub=False, cookies=cookies)
+    r = yield get_page(f'user/{name}/env', app, hub=False, cookies=cookies)
     r.raise_for_status()
     env = r.json()
     assert env['JUPYTERHUB_USER'] == name
@@ -229,10 +226,10 @@ def test_spawn_page_admin(app, admin_access):
     with mock.patch.dict(app.users.settings, {'spawner_class': FormSpawner}):
         cookies = yield app.login_user('admin')
         u = add_user(app.db, app=app, name='melanie')
-        r = yield get_page('spawn/' + u.name, app, cookies=cookies)
-        assert r.url.endswith('/spawn/' + u.name)
+        r = yield get_page(f'spawn/{u.name}', app, cookies=cookies)
+        assert r.url.endswith(f'/spawn/{u.name}')
         assert FormSpawner.options_form in r.text
-        assert "Spawning server for {}".format(u.name) in r.text
+        assert f"Spawning server for {u.name}" in r.text
 
 
 @pytest.mark.gen_test
@@ -328,7 +325,7 @@ def test_user_redirect(app):
     r.raise_for_status()
     print(urlparse(r.url))
     path = urlparse(r.url).path
-    assert path == ujoin(app.base_url, '/user/%s/notebooks/test.ipynb' % name)
+    assert path == ujoin(app.base_url, f'/user/{name}/notebooks/test.ipynb')
 
 
 @pytest.mark.gen_test
@@ -341,13 +338,13 @@ def test_user_redirect_deprecated(app):
     r.raise_for_status()
     print(urlparse(r.url))
     path = urlparse(r.url).path
-    assert path == ujoin(app.base_url, '/user/%s/' % name)
+    assert path == ujoin(app.base_url, f'/user/{name}/')
 
     r = yield get_page('/user/baduser/test.ipynb', app, cookies=cookies, hub=False)
     r.raise_for_status()
     print(urlparse(r.url))
     path = urlparse(r.url).path
-    assert path == ujoin(app.base_url, '/user/%s/test.ipynb' % name)
+    assert path == ujoin(app.base_url, f'/user/{name}/test.ipynb')
 
     r = yield get_page('/user/baduser/test.ipynb', app, hub=False)
     r.raise_for_status()
@@ -364,7 +361,8 @@ def test_user_redirect_deprecated(app):
 def test_login_fail(app):
     name = 'wash'
     base_url = public_url(app)
-    r = yield async_requests.post(base_url + 'hub/login',
+    r = yield async_requests.post(
+        f'{base_url}hub/login',
         data={
             'username': name,
             'password': 'wrong',
@@ -388,9 +386,8 @@ def test_login_strip(app):
         called_with.append(data)
 
     with mock.patch.object(app.authenticator, 'authenticate', mock_authenticate):
-        yield async_requests.post(base_url + 'hub/login',
-            data=form_data,
-            allow_redirects=False,
+        yield async_requests.post(
+            f'{base_url}hub/login', data=form_data, allow_redirects=False
         )
 
     assert called_with == [form_data]
@@ -418,12 +415,7 @@ def test_login_strip(app):
 def test_login_redirect(app, running, next_url, location):
     cookies = yield app.login_user('river')
     user = app.users['river']
-    if location:
-        location = ujoin(app.base_url, location)
-    else:
-        # use default url
-        location = user.url
-
+    location = ujoin(app.base_url, location) if location else user.url
     url = 'login'
     if next_url:
         if '//' not in next_url:
@@ -444,10 +436,11 @@ def test_login_redirect(app, running, next_url, location):
 
 @pytest.mark.gen_test
 def test_auto_login(app, request):
+
     class DummyLoginHandler(BaseHandler):
         def get(self):
             self.write('ok!')
-    base_url = public_url(app) + '/'
+    base_url = f'{public_url(app)}/'
     app.tornado_application.add_handlers(".*$", [
         (ujoin(app.hub.base_url, 'dummy'), DummyLoginHandler),
     ])
@@ -565,11 +558,11 @@ def test_announcements(app, announcements):
     template_vars = {"announcement": ann01}
     announcements = announcements.split(",")
     for name in announcements:
-        template_vars["announcement_" + name] = "ANN_" + name
+        template_vars[f"announcement_{name}"] = f"ANN_{name}"
 
     def assert_announcement(name, text):
         if name in announcements:
-            assert template_vars["announcement_" + name] in text
+            assert template_vars[f"announcement_{name}"] in text
             assert ann01 not in text
         else:
             assert ann01 in text
@@ -611,7 +604,9 @@ def test_announcements(app, announcements):
 @pytest.mark.gen_test
 def test_bad_oauth_get(app, params):
     cookies = yield app.login_user("authorizer")
-    r = yield get_page("hub/api/oauth2/authorize?" + params, app, hub=False, cookies=cookies)
+    r = yield get_page(
+        f"hub/api/oauth2/authorize?{params}", app, hub=False, cookies=cookies
+    )
     assert r.status_code == 400
 
 
@@ -627,6 +622,7 @@ def test_token_page(app):
         import re
         # trim empty lines
         return re.sub(r"(\n\s*)+", "\n", soup.body.find(class_="container").text)
+
     body = extract_body(r)
     assert "Request new API token" in body, body
     # no tokens yet, no lists
@@ -656,7 +652,7 @@ def test_token_page(app):
     r.raise_for_status()
     body = extract_body(r)
     assert "API Tokens" in body, body
-    assert "Server at %s" % user.base_url in body, body
+    assert f"Server at {user.base_url}" in body, body
     assert "Authorized Applications" in body, body
 
 

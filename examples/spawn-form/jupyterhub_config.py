@@ -18,15 +18,14 @@ class DemoFormSpawner(LocalProcessSpawner):
     def options_from_form(self, formdata):
         options = {}
         options['env'] = env = {}
-        
+
         env_lines = formdata.get('env', [''])
         for line in env_lines[0].splitlines():
             if line:
                 key, value = line.split('=', 1)
                 env[key.strip()] = value.strip()
-        
-        arg_s = formdata.get('args', [''])[0].strip()
-        if arg_s:
+
+        if arg_s := formdata.get('args', [''])[0].strip():
             options['argv'] = shlex.split(arg_s)
         return options
     

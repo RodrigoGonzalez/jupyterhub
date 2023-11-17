@@ -76,7 +76,7 @@ def _scrub_uri(uri):
                 key, value = s.split('=', 1)
                 for substring in SCRUB_PARAM_KEYS:
                     if substring in key:
-                        parts[i] = key + '=[secret]'
+                        parts[i] = f'{key}=[secret]'
                         changed = True
         if changed:
             parsed = parsed._replace(query='&'.join(parts))
@@ -149,11 +149,7 @@ def log_request(handler):
     if status >= 500 and status != 502:
         log_method(json.dumps(headers, indent=2))
     elif status in {301, 302}:
-        # log redirect targets
-        # FIXME: _headers is private, but there doesn't appear to be a public way
-        # to get headers from tornado
-        location = handler._headers.get('Location')
-        if location:
-            ns['location'] = ' -> {}'.format(_scrub_uri(location))
+        if location := handler._headers.get('Location'):
+            ns['location'] = f' -> {_scrub_uri(location)}'
     log_method(msg.format(**ns))
     prometheus_log_method(handler)

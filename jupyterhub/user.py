@@ -54,7 +54,7 @@ class UserDict(dict):
         elif isinstance(key, str):
             orm_user = self.db.query(orm.User).filter(orm.User.name == key).first()
             if orm_user is None:
-                raise KeyError("No such user: %s" % key)
+                raise KeyError(f"No such user: {key}")
             else:
                 key = orm_user
         if isinstance(key, orm.User):
@@ -68,14 +68,12 @@ class UserDict(dict):
             return user
         elif isinstance(key, int):
             id = key
-            if id not in self:
-                orm_user = self.db.query(orm.User).filter(orm.User.id == id).first()
-                if orm_user is None:
-                    raise KeyError("No such user: %s" % id)
-                user = self.add(orm_user)
-            else:
-                user = dict.__getitem__(self, id)
-            return user
+            if id in self:
+                return dict.__getitem__(self, id)
+            orm_user = self.db.query(orm.User).filter(orm.User.id == id).first()
+            if orm_user is None:
+                raise KeyError(f"No such user: {id}")
+            return self.add(orm_user)
         else:
             raise KeyError(repr(key))
 
@@ -106,10 +104,9 @@ class UserDict(dict):
         counts = defaultdict(lambda : 0)
         for user in self.values():
             for spawner in user.spawners.values():
-                pending = spawner.pending
-                if pending:
+                if pending := spawner.pending:
                     counts['pending'] += 1
-                    counts[pending + '_pending'] += 1
+                    counts[f'{pending}_pending'] += 1
                 if spawner.active:
                     counts['active'] += 1
                 if spawner.ready:
@@ -226,9 +223,9 @@ class User:
 
         # use fully quoted name for client_id because it will be used in cookie-name
         # self.escaped_name may contain @ which is legal in URLs but not cookie keys
-        client_id = 'jupyterhub-user-%s' % quote(self.name)
+        client_id = f'jupyterhub-user-{quote(self.name)}'
         if server_name:
-            client_id = '%s-%s' % (client_id, quote(server_name))
+            client_id = f'{client_id}-{quote(server_name)}'
         spawn_kwargs = dict(
             user=self,
             orm_spawner=orm_spawner,
@@ -274,9 +271,7 @@ class User:
     @property
     def running(self):
         """property for whether the user's default server is running"""
-        if not self.spawners:
-            return False
-        return self.spawner.ready
+        return False if not self.spawners else self.spawner.ready
 
     @property
     def active(self):
@@ -327,7 +322,7 @@ class User:
         """Get the *host* for my server (proto://domain[:port])"""
         # FIXME: escaped_name probably isn't escaped enough in general for a domain fragment
         parsed = urlparse(self.settings['subdomain_host'])
-        h = '%s://%s' % (parsed.scheme, self.domain)
+        h = f'{parsed.scheme}://{self.domain}'
         if parsed.port:
             h += ':%i' % parsed.port
         return h
@@ -348,10 +343,7 @@ class User:
 
     def server_url(self, server_name=''):
         """Get the url for a server with a given name"""
-        if not server_name:
-            return self.url
-        else:
-            return url_path_join(self.url, server_name)
+        return self.url if not server_name else url_path_join(self.url, server_name)
 
     def progress_url(self, server_name=''):
         """API URL for progress endpoint for a server with a given name"""
@@ -377,13 +369,13 @@ class User:
         """
         db = self.db
 
-        base_url = url_path_join(self.base_url, server_name) + '/'
+        base_url = f'{url_path_join(self.base_url, server_name)}/'
 
         orm_server = orm.Server(
             base_url=base_url,
         )
         db.add(orm_server)
-        note = "Server at %s" % base_url
+        note = f"Server at {base_url}"
         api_token = self.new_api_token(note=note)
         db.commit()
 
@@ -410,22 +402,21 @@ class User:
             # create a new OAuth client + secret on every launch
             # containers that resume will be updated below
             oauth_provider.add_client(
-                client_id, api_token,
+                client_id,
+                api_token,
                 url_path_join(self.url, server_name, 'oauth_callback'),
-                description="Server at %s" % (url_path_join(self.base_url, server_name) + '/'),
+                description=f"Server at {url_path_join(self.base_url, server_name)}/",
             )
         db.commit()
 
-        # trigger pre-spawn hook on authenticator
-        authenticator = self.authenticator
-        if (authenticator):
+        if authenticator := self.authenticator:
             await maybe_future(authenticator.pre_spawn_start(self, spawner))
 
         spawner._start_pending = True
         # update spawner start time, and activity for both spawner and user
         self.last_activity = \
-            spawner.orm_spawner.started = \
-            spawner.orm_spawner.last_activity = datetime.utcnow()
+                spawner.orm_spawner.started = \
+                spawner.orm_spawner.last_activity = datetime.utcnow()
         db.commit()
         # wait for spawner.start to return
         try:
@@ -437,10 +428,7 @@ class User:
             url = await gen.with_timeout(timedelta(seconds=spawner.start_timeout), f)
             if url:
                 # get ip, port info from return value of start()
-                if isinstance(url, str):
-                    # >= 0.9 can return a full URL string
-                    pass
-                else:
+                if not isinstance(url, str):
                     # >= 0.7 returns (ip, port)
                     url = 'http://%s:%i' % url
                 urlinfo = urlparse(url)
@@ -448,10 +436,7 @@ class User:
                 server.ip = urlinfo.hostname
                 port = urlinfo.port
                 if not port:
-                    if urlinfo.scheme == 'https':
-                        port = 443
-                    else:
-                        port = 80
+                    port = 443 if urlinfo.scheme == 'https' else 80
                 server.port = port
                 db.commit()
             else:
@@ -464,15 +449,13 @@ class User:
                 if orm_token is not None:
                     self.db.delete(orm_token)
                     self.db.commit()
-                # check if the re-used API token is valid
-                found = orm.APIToken.find(self.db, spawner.api_token)
-                if found:
+                if found := orm.APIToken.find(self.db, spawner.api_token):
                     if found.user is not self.orm_user:
                         self.log.error("%s's server is using %s's token! Revoking this token.",
                             self.name, (found.user or found.service).name)
                         self.db.delete(found)
                         self.db.commit()
-                        raise ValueError("Invalid token for %s!" % self.name)
+                        raise ValueError(f"Invalid token for {self.name}!")
                 else:
                     # Spawner.api_token has changed, but isn't in the db.
                     # What happened? Maybe something unclean in a resumed container.
@@ -481,9 +464,10 @@ class User:
                     )
                     # use generated=False because we don't trust this token
                     # to have been generated properly
-                    self.new_api_token(spawner.api_token,
+                    self.new_api_token(
+                        spawner.api_token,
                         generated=False,
-                        note="retrieved from spawner %s" % server_name,
+                        note=f"retrieved from spawner {server_name}",
                     )
                 # update OAuth client secret with updated API token
                 if oauth_provider:
@@ -586,10 +570,7 @@ class User:
             # remove server entry from db
             spawner.server = None
             if not spawner.will_resume:
-                # find and remove the API token and oauth client if the spawner isn't
-                # going to re-use it next time
-                orm_token = orm.APIToken.find(self.db, api_token)
-                if orm_token:
+                if orm_token := orm.APIToken.find(self.db, api_token):
                     self.db.delete(orm_token)
                 # remove oauth client as well
                 # handle upgrades from 0.8, where client id will be `user-USERNAME`,

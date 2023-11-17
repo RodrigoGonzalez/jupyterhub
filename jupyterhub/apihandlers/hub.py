@@ -27,9 +27,8 @@ class ShutdownAPIHandler(APIHandler):
         """
         from ..app import JupyterHub
         app = JupyterHub.instance()
-        
-        data = self.get_json_body()
-        if data:
+
+        if data := self.get_json_body():
             if 'proxy' in data:
                 proxy = data['proxy']
                 if proxy not in {True, False}:
@@ -40,13 +39,13 @@ class ShutdownAPIHandler(APIHandler):
                 if servers not in {True, False}:
                     raise web.HTTPError(400, "servers must be true or false, got %r" % servers)
                 app.cleanup_servers = servers
-        
+
         # finish the request
         self.set_status(202)
         self.finish(json.dumps({
             "message": "Shutting down Hub"
         }))
-        
+
         # stop the eventloop, which will trigger cleanup
         loop = IOLoop.current()
         loop.add_callback(loop.stop)

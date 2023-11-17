@@ -139,10 +139,7 @@ class Proxy(LoggingConfigurable):
         if self.host_routing and not host_route:
             raise ValueError("Cannot add route without host %r, using host-routing" % routespec)
         # add trailing slash
-        if not routespec.endswith('/'):
-            return routespec + '/'
-        else:
-            return routespec
+        return f'{routespec}/' if not routespec.endswith('/') else routespec
 
     async def add_route(self, routespec, target, data):
         """Add a route to the proxy.
@@ -245,7 +242,7 @@ class Proxy(LoggingConfigurable):
 
         if spawner.pending and spawner.pending != 'spawn':
             raise RuntimeError(
-                "%s is pending %s, shouldn't be added to the proxy yet!" % (spawner._log_name, spawner.pending)
+                f"{spawner._log_name} is pending {spawner.pending}, shouldn't be added to the proxy yet!"
             )
 
         await self.add_route(
@@ -270,10 +267,11 @@ class Proxy(LoggingConfigurable):
 
         Used when loading up a new proxy.
         """
-        futures = []
-        for service in service_dict.values():
-            if service.server:
-                futures.append(self.add_service(service))
+        futures = [
+            self.add_service(service)
+            for service in service_dict.values()
+            if service.server
+        ]
         # wait after submitting them all
         await gen.multi(futures)
 
@@ -284,9 +282,11 @@ class Proxy(LoggingConfigurable):
         """
         futures = []
         for user in user_dict.values():
-            for name, spawner in user.spawners.items():
-                if spawner.ready:
-                    futures.append(self.add_user(user, name))
+            futures.extend(
+                self.add_user(user, name)
+                for name, spawner in user.spawners.items()
+                if spawner.ready
+            )
         # wait after submitting them all
         await gen.multi(futures)
 
@@ -531,7 +531,6 @@ class ConfigurableHTTPProxy(Proxy):
             os.remove(self.pid_file)
         except FileNotFoundError:
             self.log.debug("PID file %s already removed", self.pid_file)
-            pass
 
     async def start(self):
         """Start the proxy process"""
@@ -559,11 +558,16 @@ class ConfigurableHTTPProxy(Proxy):
         if self.ssl_cert:
             cmd.extend(['--ssl-cert', self.ssl_cert])
         if self.app.statsd_host:
-            cmd.extend([
-                '--statsd-host', self.app.statsd_host,
-                '--statsd-port', str(self.app.statsd_port),
-                '--statsd-prefix', self.app.statsd_prefix + '.chp'
-            ])
+            cmd.extend(
+                [
+                    '--statsd-host',
+                    self.app.statsd_host,
+                    '--statsd-port',
+                    str(self.app.statsd_port),
+                    '--statsd-prefix',
+                    f'{self.app.statsd_prefix}.chp',
+                ]
+            )
         # Warn if SSL is not used
         if ' --ssl' not in ' '.join(cmd):
             self.log.warning("Running JupyterHub without SSL."
@@ -657,7 +661,7 @@ class ConfigurableHTTPProxy(Proxy):
         path = self.validate_routespec(routespec)
         # CHP always wants to start with /
         if not path.startswith('/'):
-            path = '/' + path
+            path = f'/{path}'
         # BUG: CHP doesn't seem to like trailing slashes on some endpoints (DELETE)
         if path != '/' and path.endswith('/'):
             path = path.rstrip('/')
@@ -677,7 +681,7 @@ class ConfigurableHTTPProxy(Proxy):
             routespec = routespec.lstrip('/')
         # all routes should end with /
         if not routespec.endswith('/'):
-            routespec = routespec + '/'
+            routespec = f'{routespec}/'
         return routespec
 
     async def api_request(self, path, method='GET', body=None, client=None):
@@ -688,15 +692,14 @@ class ConfigurableHTTPProxy(Proxy):
         if isinstance(body, dict):
             body = json.dumps(body)
         self.log.debug("Proxy: Fetching %s %s", method, url)
-        req = HTTPRequest(url,
-                          method=method,
-                          headers={'Authorization': 'token {}'.format(
-                              self.auth_token)},
-                          body=body,
-                          )
+        req = HTTPRequest(
+            url,
+            method=method,
+            headers={'Authorization': f'token {self.auth_token}'},
+            body=body,
+        )
         async with self.semaphore:
-            result = await client.fetch(req)
-            return result
+            return await client.fetch(req)
 
     async def add_route(self, routespec, target, data):
         body = data or {}

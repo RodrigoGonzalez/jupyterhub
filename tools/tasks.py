@@ -18,6 +18,7 @@ This does:
 - builds bdist_wheel from sdist (optional upload)
 
 """
+
 # derived from PyZMQ release/tasks.py (used under BSD)
 
 # Copyright (c) Jupyter Developers
@@ -43,8 +44,8 @@ py_exe = os.environ.get('PYTHON_EXE', 'python3.4')
 
 tmp = "/tmp"
 env_root = os.path.join(tmp, 'envs')
-repo_root = pjoin(tmp, '%s-repo' % pkg)
-sdist_root = pjoin(tmp, '%s-release' % pkg)
+repo_root = pjoin(tmp, f'{pkg}-repo')
+sdist_root = pjoin(tmp, f'{pkg}-release')
 
 
 def run(cmd, **kwargs):
@@ -75,7 +76,7 @@ def clone_repo(reset=False):
         with cd(repo_root):
             run("git pull")
     else:
-        run("git clone %s %s" % (repo, repo_root))
+        run(f"git clone {repo} {repo_root}")
 
 
 @task
@@ -83,7 +84,7 @@ def patch_version(vs, path=pjoin(here, '..')):
     """Patch zmq/sugar/version.py for the current release"""
     v = parse_vs(vs)
     version_py = pjoin(path, 'jupyterhub', 'version.py')
-    print("patching %s with %s" % (version_py, vs))
+    print(f"patching {version_py} with {vs}")
     # read version.py, minus version parts
     with open(version_py) as f:
         pre_lines = []
@@ -96,9 +97,7 @@ def patch_version(vs, path=pjoin(here, '..')):
             if line.startswith(')'):
                 post_lines.append(line)
                 break
-        for line in f:
-            post_lines.append(line)
-    
+        post_lines.extend(iter(f))
     # write new version.py
     with open(version_py, 'w') as f:
         for line in pre_lines:
@@ -107,7 +106,7 @@ def patch_version(vs, path=pjoin(here, '..')):
             f.write('    %r,\n' % part)
         for line in post_lines:
             f.write(line)
-    
+
     # verify result
     ns = {}
     with open(version_py) as f:
@@ -120,7 +119,7 @@ def tag(vs, push=False):
     """Make the tagged release commit"""
     patch_version(vs, repo_root)
     with cd(repo_root):
-        run('git commit -a -m "release {}"'.format(vs))
+        run(f'git commit -a -m "release {vs}"')
         run('git tag -a -m "release {0}" {0}'.format(vs))
         if push:
             run('git push')
@@ -149,15 +148,12 @@ def make_env(*packages):
     """
     if not os.path.exists(env_root):
         os.makedirs(env_root)
-    
+
     env = os.path.join(env_root, os.path.basename(py_exe))
     py = pjoin(env, 'bin', 'python')
     # new env
     if not os.path.exists(py):
-        run('python -m virtualenv {} -p {}'.format(
-            pipes.quote(env),
-            pipes.quote(py_exe),
-        ))
+        run(f'python -m virtualenv {pipes.quote(env)} -p {pipes.quote(py_exe)}')
         py = pjoin(env, 'bin', 'python')
         run([py, '-V'])
         install(py, 'pip', 'setuptools')

@@ -67,10 +67,12 @@ def test_external_proxy(request):
         if proxy.poll() is None:
             proxy.terminate()
             proxy.wait(timeout=10)
+
     request.addfinalizer(_cleanup_proxy)
 
     def wait_for_proxy():
         return wait_for_http_server('http://%s:%i' % (proxy_ip, proxy_port))
+
     yield wait_for_proxy()
 
     yield app.initialize([])
@@ -80,20 +82,20 @@ def test_external_proxy(request):
     # test if api service has a root route '/'
     routes = yield app.proxy.get_all_routes()
     assert list(routes.keys()) == [app.hub.routespec]
-    
+
     # add user to the db and start a single user server
     name = 'river'
     add_user(app.db, app, name=name)
     r = yield api_request(app, 'users', name, 'server', method='post')
     r.raise_for_status()
-    
+
     routes = yield app.proxy.get_all_routes()
     # sets the desired path result
     user_path = ujoin(app.base_url, 'user/river') + '/'
     print(app.base_url, user_path)
     host = ''
     if app.subdomain_host:
-        host = '%s.%s' % (name, urlparse(app.subdomain_host).hostname)
+        host = f'{name}.{urlparse(app.subdomain_host).hostname}'
     user_spec = host + user_path
     assert sorted(routes.keys()) == [app.hub.routespec, user_spec]
 
@@ -105,7 +107,7 @@ def test_external_proxy(request):
 
     routes = yield app.proxy.get_all_routes()
 
-    assert list(routes.keys()) == []
+    assert not list(routes.keys())
 
     # poke the server to update the proxy
     r = yield api_request(app, 'proxy', method='post')
@@ -160,7 +162,7 @@ def test_external_proxy(request):
 def test_check_routes(app,  username, disable_check_routes):
     proxy = app.proxy
     test_user = add_user(app.db, app, name=username)
-    r = yield api_request(app, 'users/%s/server' % username, method='post')
+    r = yield api_request(app, f'users/{username}/server', method='post')
     r.raise_for_status()
 
     # check a valid route exists for user
@@ -197,8 +199,8 @@ def test_check_routes(app,  username, disable_check_routes):
 def test_add_get_delete(app, routespec, disable_check_routes):
     arg = routespec
     if not routespec.endswith('/'):
-        routespec = routespec + '/'
-    
+        routespec = f'{routespec}/'
+
     # host-routes when not host-routing raises an error
     # and vice versa
     expect_value_error = bool(app.subdomain_host) ^ (not routespec.startswith('/'))

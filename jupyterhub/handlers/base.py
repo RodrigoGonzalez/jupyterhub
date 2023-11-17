@@ -162,10 +162,9 @@ class BaseHandler(RequestHandler):
 
         Can be overridden by defining Content-Security-Policy in settings['headers']
         """
-        return '; '.join([
-            "frame-ancestors 'self'",
-            "report-uri " + self.csp_report_uri,
-        ])
+        return '; '.join(
+            ["frame-ancestors 'self'", f"report-uri {self.csp_report_uri}"]
+        )
 
     def get_content_type(self):
         return 'text/html'
@@ -210,9 +209,7 @@ class BaseHandler(RequestHandler):
         """Get the authorization token from Authorization header"""
         auth_header = self.request.headers.get('Authorization', '')
         match = auth_header_pat.match(auth_header)
-        if not match:
-            return None
-        return match.group(1)
+        return None if not match else match.group(1)
 
     def get_current_user_oauth_token(self):
         """Get the current user identified by OAuth access token
@@ -390,8 +387,7 @@ class BaseHandler(RequestHandler):
         if self.subdomain_host:
             kwargs['domain'] = self.domain
         user = self.get_current_user_cookie()
-        session_id = self.get_session_cookie()
-        if session_id:
+        if session_id := self.get_session_cookie():
             # clear session id
             self.clear_cookie(SESSION_COOKIE_NAME, **kwargs)
 
@@ -435,11 +431,7 @@ class BaseHandler(RequestHandler):
         kwargs.update(self.settings.get('cookie_options', {}))
         kwargs.update(overrides)
 
-        if encrypted:
-            set_cookie = self.set_secure_cookie
-        else:
-            set_cookie = self.set_cookie
-
+        set_cookie = self.set_secure_cookie if encrypted else self.set_cookie
         self.log.debug("Setting cookie %s: %s", key, kwargs)
         set_cookie(key, value, **kwargs)
 
@@ -513,19 +505,19 @@ class BaseHandler(RequestHandler):
         - else: /hub/home
         """
         next_url = self.get_argument('next', default='')
-        if (next_url + '/').startswith(
+        if f'{next_url}/'.startswith(
             (
-                '%s://%s/' % (self.request.protocol, self.request.host),
-                '//%s/' % self.request.host,
+                f'{self.request.protocol}://{self.request.host}/',
+                f'//{self.request.host}/',
             )
         ):
             # treat absolute URLs for our host as absolute paths:
             parsed = urlparse(next_url)
             next_url = parsed.path
             if parsed.query:
-                next_url = next_url + '?' + parsed.query
+                next_url = f'{next_url}?{parsed.query}'
             if parsed.hash:
-                next_url = next_url + '#' + parsed.hash
+                next_url = f'{next_url}#{parsed.hash}'
         if next_url and (urlparse(next_url).netloc or not next_url.startswith('/')):
             self.log.warning("Disallowing redirect outside JupyterHub: %r", next_url)
             next_url = ''
@@ -570,7 +562,7 @@ class BaseHandler(RequestHandler):
         refreshing = user is not None
 
         if user and username != user.name:
-            raise ValueError("Username doesn't match! %s != %s" % (username, user.name))
+            raise ValueError(f"Username doesn't match! {username} != {user.name}")
 
         if user is None:
             new_user = username not in self.users
@@ -641,14 +633,14 @@ class BaseHandler(RequestHandler):
         user_server_name = user.name
 
         if server_name:
-            user_server_name = '%s:%s' % (user.name, server_name)
+            user_server_name = f'{user.name}:{server_name}'
 
         if server_name in user.spawners and user.spawners[server_name].pending:
             pending = user.spawners[server_name].pending
             SERVER_SPAWN_DURATION_SECONDS.labels(
                 status=ServerSpawnStatus.already_pending
             ).observe(time.perf_counter() - spawn_start_time)
-            raise RuntimeError("%s pending %s" % (user_server_name, pending))
+            raise RuntimeError(f"{user_server_name} pending {pending}")
 
         # count active servers and pending spawns
         # we could do careful bookkeeping to avoid
@@ -835,8 +827,10 @@ class BaseHandler(RequestHandler):
                     status=ServerSpawnStatus.failure
                 ).observe(time.perf_counter() - spawn_start_time)
 
-                raise web.HTTPError(500, "Spawner failed to start [status=%s]. The logs for %s may contain details." % (
-                    status, spawner._log_name))
+                raise web.HTTPError(
+                    500,
+                    f"Spawner failed to start [status={status}]. The logs for {spawner._log_name} may contain details.",
+                )
 
             if spawner._waiting_for_response:
                 # hit timeout waiting for response, but server's running.
@@ -877,7 +871,7 @@ class BaseHandler(RequestHandler):
             raise KeyError("User %s has no such spawner %r", user.name, server_name)
         spawner = user.spawners[server_name]
         if spawner.pending:
-            raise RuntimeError("%s pending %s" % (spawner._log_name, spawner.pending))
+            raise RuntimeError(f"{spawner._log_name} pending {spawner.pending}")
         # set user._stop_pending before doing anything async
         # to avoid races
         spawner._stop_pending = True
@@ -972,9 +966,7 @@ class BaseHandler(RequestHandler):
             except Exception:
                 pass
 
-            # construct the custom reason, if defined
-            reason = getattr(exception, 'reason', '')
-            if reason:
+            if reason := getattr(exception, 'reason', ''):
                 message = reasons.get(reason, reason)
 
         if exception and isinstance(exception, SQLAlchemyError):
@@ -992,10 +984,7 @@ class BaseHandler(RequestHandler):
 
         self.set_header('Content-Type', 'text/html')
         if isinstance(exception, web.HTTPError):
-            # allow setting headers from exceptions
-            # since exception handler clears headers
-            headers = getattr(exception, 'headers', None)
-            if headers:
+            if headers := getattr(exception, 'headers', None):
                 for key, value in headers.items():
                     self.set_header(key, value)
             # Content-Length must be recalculated.
@@ -1003,7 +992,7 @@ class BaseHandler(RequestHandler):
 
         # render the template
         try:
-            html = self.render_template('%s.html' % status_code, **ns)
+            html = self.render_template(f'{status_code}.html', **ns)
         except TemplateNotFound:
             self.log.debug("No template for %d", status_code)
             try:
@@ -1058,7 +1047,7 @@ class UserSpawnHandler(BaseHandler):
         """Fail an API request to a not-running server"""
         self.set_status(404)
         self.set_header("Content-Type", "application/json")
-        self.write(json.dumps({"message": "%s is not running" % user.name}))
+        self.write(json.dumps({"message": f"{user.name} is not running"}))
         self.finish()
 
     async def get(self, user_name, user_path):
@@ -1075,7 +1064,7 @@ class UserSpawnHandler(BaseHandler):
             user = self.find_user(user_name)
             if user is None:
                 # no such user
-                raise web.HTTPError(404, "No such user %s" % user_name)
+                raise web.HTTPError(404, f"No such user {user_name}")
             self.log.info("Admin %s requesting spawn on behalf of %s",
                           current_user.name, user.name)
             admin_spawn = True
@@ -1143,8 +1132,6 @@ class UserSpawnHandler(BaseHandler):
                     await gen.with_timeout(timedelta(seconds=self.slow_spawn_timeout), spawner._spawn_future)
                 except gen.TimeoutError:
                     self.log.info("Pending spawn for %s didn't finish in %.1f seconds", spawner._log_name, self.slow_spawn_timeout)
-                    pass
-
             # we may have waited above, check pending again:
             # page could be pending spawn *or* stop
             if spawner.pending:
@@ -1254,7 +1241,7 @@ class UserSpawnHandler(BaseHandler):
             target = url_path_join(current_user.url, user_path or '')
             if self.request.query:
                 # FIXME: use urlunparse instead?
-                target += '?' + self.request.query
+                target += f'?{self.request.query}'
             self.redirect(target)
         else:
             # not logged in, clear any cookies and reload
@@ -1283,7 +1270,7 @@ class UserRedirectHandler(BaseHandler):
         url = url_path_join(user.url, path)
         if self.request.query:
             # FIXME: use urlunparse instead?
-            url += '?' + self.request.query
+            url += f'?{self.request.query}'
         self.redirect(url)
 
 
@@ -1304,7 +1291,7 @@ class AddSlashHandler(BaseHandler):
     """Handler for adding trailing slash to URLs that need them"""
     def get(self, *args):
         src = urlparse(self.request.uri)
-        dest = src._replace(path=src.path + '/')
+        dest = src._replace(path=f'{src.path}/')
         self.redirect(urlunparse(dest))
 
 default_handlers = [

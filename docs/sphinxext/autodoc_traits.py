@@ -38,15 +38,12 @@ class TraitDocumenter(AttributeDocumenter):
         return isinstance(member, TraitType)
 
     def format_name(self):
-        return 'config c.' + super().format_name()
+        return f'config c.{super().format_name()}'
 
     def add_directive_header(self, sig):
         default = self.object.get_default_value()
-        if default is Undefined:
-            default_s = ''
-        else:
-            default_s = repr(default)
-        sig = ' = {}({})'.format(self.object.__class__.__name__, default_s)
+        default_s = '' if default is Undefined else repr(default)
+        sig = f' = {self.object.__class__.__name__}({default_s})'
         return super().add_directive_header(sig)
 
 

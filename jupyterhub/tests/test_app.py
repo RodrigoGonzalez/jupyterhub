@@ -171,9 +171,12 @@ def test_load_groups():
 @pytest.mark.gen_test
 def test_resume_spawners(tmpdir, request):
     if not os.getenv('JUPYTERHUB_TEST_DB_URL'):
-        p = patch.dict(os.environ, {
-            'JUPYTERHUB_TEST_DB_URL': 'sqlite:///%s' % tmpdir.join('jupyterhub.sqlite'),
-        })
+        p = patch.dict(
+            os.environ,
+            {
+                'JUPYTERHUB_TEST_DB_URL': f"sqlite:///{tmpdir.join('jupyterhub.sqlite')}"
+            },
+        )
         p.start()
         request.addfinalizer(p.stop)
     @gen.coroutine
@@ -183,6 +186,7 @@ def test_resume_spawners(tmpdir, request):
         app.config.ConfigurableHTTPProxy.auth_token = 'unused'
         yield app.initialize([])
         return app
+
     app = yield new_hub()
     db = app.db
     # spawn a user's server
@@ -221,7 +225,7 @@ def test_resume_spawners(tmpdir, request):
     user = app.users[name]
     assert not user.running
     assert user.spawner.server is None
-    assert list(db.query(orm.Server)) == []
+    assert not list(db.query(orm.Server))
 
 
 @pytest.mark.parametrize(

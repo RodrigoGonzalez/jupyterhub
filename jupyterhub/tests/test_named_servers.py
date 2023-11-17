@@ -31,23 +31,25 @@ def test_default_server(app, named_servers):
 
     user_model = normalize_user(r.json())
     print(user_model)
-    assert user_model == fill_user({
-        'name': username,
-        'auth_state': None,
-        'server': user.url,
-        'servers': {
-            '': {
-                'name': '',
-                'started': TIMESTAMP,
-                'last_activity': TIMESTAMP,
-                'url': user.url,
-                'pending': None,
-                'ready': True,
-                'progress_url': 'PREFIX/hub/api/users/{}/server/progress'.format(username),
-                'state': {'pid': 0},
+    assert user_model == fill_user(
+        {
+            'name': username,
+            'auth_state': None,
+            'server': user.url,
+            'servers': {
+                '': {
+                    'name': '',
+                    'started': TIMESTAMP,
+                    'last_activity': TIMESTAMP,
+                    'url': user.url,
+                    'pending': None,
+                    'ready': True,
+                    'progress_url': f'PREFIX/hub/api/users/{username}/server/progress',
+                    'state': {'pid': 0},
+                }
             },
-        },
-    })
+        }
+    )
 
 
     # now stop the server
@@ -85,30 +87,31 @@ def test_create_named_server(app, named_servers):
     env = r.json()
     prefix = env.get('JUPYTERHUB_SERVICE_PREFIX')
     assert prefix == user.spawners[servername].server.base_url
-    assert prefix.endswith('/user/%s/%s/' % (username, servername))
+    assert prefix.endswith(f'/user/{username}/{servername}/')
 
     r = yield api_request(app, 'users', username)
     r.raise_for_status()
 
     user_model = normalize_user(r.json())
-    assert user_model == fill_user({
-        'name': username,
-        'auth_state': None,
-        'servers': {
-            servername: {
-                'name': name,
-                'started': TIMESTAMP,
-                'last_activity': TIMESTAMP,
-                'url': url_path_join(user.url, name, '/'),
-                'pending': None,
-                'ready': True,
-                'progress_url': 'PREFIX/hub/api/users/{}/servers/{}/progress'.format(
-                    username, servername),
-                'state': {'pid': 0},
-            }
-            for name in [servername]
-        },
-    })
+    assert user_model == fill_user(
+        {
+            'name': username,
+            'auth_state': None,
+            'servers': {
+                servername: {
+                    'name': name,
+                    'started': TIMESTAMP,
+                    'last_activity': TIMESTAMP,
+                    'url': url_path_join(user.url, name, '/'),
+                    'pending': None,
+                    'ready': True,
+                    'progress_url': f'PREFIX/hub/api/users/{username}/servers/{servername}/progress',
+                    'state': {'pid': 0},
+                }
+                for name in [servername]
+            },
+        }
+    )
 
 
 @pytest.mark.gen_test

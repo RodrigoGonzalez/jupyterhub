@@ -54,11 +54,9 @@ def populate_db(url):
         # admin's spawner is not running
         spawner = orm.Spawner(name='', user=admin)
         db.add(spawner)
-        db.commit()
     else:
         user.server = orm.Server()
-        db.commit()
-
+    db.commit()
     # create some oauth objects
     if jupyterhub.version_info >= (0, 8):
         # create oauth client
@@ -90,9 +88,5 @@ def populate_db(url):
 
 if __name__ == '__main__':
     import sys
-    if len(sys.argv) > 1:
-        url = sys.argv[1]
-    else:
-        url = 'sqlite:///jupyterhub.sqlite'
-
+    url = sys.argv[1] if len(sys.argv) > 1 else 'sqlite:///jupyterhub.sqlite'
     populate_db(url)

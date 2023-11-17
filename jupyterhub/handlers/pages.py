@@ -99,7 +99,7 @@ class SpawnHandler(BaseHandler):
 
             user = self.find_user(for_user)
             if user is None:
-                raise web.HTTPError(404, "No such user: %s" % for_user)
+                raise web.HTTPError(404, f"No such user: {for_user}")
 
         if not self.allow_named_servers and user.running:
             url = user.url
@@ -119,7 +119,7 @@ class SpawnHandler(BaseHandler):
             url = user.url
             if self.request.query:
                 # add query params
-                url += '?' + self.request.query
+                url += f'?{self.request.query}'
             self.redirect(url)
 
     @web.authenticated
@@ -131,7 +131,7 @@ class SpawnHandler(BaseHandler):
                 raise web.HTTPError(403, "Only admins can spawn on behalf of other users")
             user = self.find_user(for_user)
             if user is None:
-                raise web.HTTPError(404, "No such user: %s" % for_user)
+                raise web.HTTPError(404, f"No such user: {for_user}")
         if not self.allow_named_servers and user.running:
             url = user.url
             self.log.warning("User is already running: %s", url)
@@ -139,13 +139,14 @@ class SpawnHandler(BaseHandler):
             return
         if user.spawner.pending:
             raise web.HTTPError(
-                400, "%s is pending %s" % (user.spawner._log_name, user.spawner.pending)
+                400, f"{user.spawner._log_name} is pending {user.spawner.pending}"
             )
-        form_options = {}
-        for key, byte_list in self.request.body_arguments.items():
-            form_options[key] = [ bs.decode('utf8') for bs in byte_list ]
+        form_options = {
+            key: [bs.decode('utf8') for bs in byte_list]
+            for key, byte_list in self.request.body_arguments.items()
+        }
         for key, byte_list in self.request.files.items():
-            form_options["%s_file"%key] = byte_list
+            form_options[f"{key}_file"] = byte_list
         try:
             options = user.spawner.options_from_form(form_options)
             await self.spawn_single_user(user, options=options)
@@ -158,11 +159,11 @@ class SpawnHandler(BaseHandler):
             self.set_login_cookie(user)
         url = user.url
 
-        next_url = self.get_argument('next', '')
-        if next_url and not next_url.startswith('/'):
-            self.log.warning("Disallowing redirect outside JupyterHub: %r", next_url)
-        elif next_url:
-            url = next_url
+        if next_url := self.get_argument('next', ''):
+            if not next_url.startswith('/'):
+                self.log.warning("Disallowing redirect outside JupyterHub: %r", next_url)
+            else:
+                url = next_url
 
         self.redirect(url)
 
@@ -181,13 +182,6 @@ class AdminHandler(BaseHandler):
             if name not in mapping:
                 mapping[name] = getattr(orm.User, name)
 
-        default_order = {
-            'name': 'asc',
-            'last_activity': 'desc',
-            'admin': 'desc',
-            'running': 'desc',
-        }
-
         sorts = self.get_arguments('sort') or default_sort
         orders = self.get_arguments('order')
 
@@ -203,6 +197,13 @@ class AdminHandler(BaseHandler):
             if s not in sorts:
                 sorts.append(s)
         if len(orders) < len(sorts):
+            default_order = {
+                'name': 'asc',
+                'last_activity': 'desc',
+                'admin': 'desc',
+                'running': 'desc',
+            }
+
             for col in sorts[len(orders):]:
                 orders.append(default_order[col])
         else:
@@ -221,12 +222,13 @@ class AdminHandler(BaseHandler):
         for u in users:
             running.extend(s for s in u.spawners.values() if s.active)
 
-        html = self.render_template('admin.html',
+        html = self.render_template(
+            'admin.html',
             current_user=self.current_user,
             admin_access=self.settings.get('admin_access', False),
             users=users,
             running=running,
-            sort={s:o for s,o in zip(sorts, orders)},
+            sort=dict(zip(sorts, orders)),
             allow_named_servers=self.allow_named_servers,
         )
         self.finish(html)
@@ -328,10 +330,12 @@ class ProxyErrorHandler(BaseHandler):
         hub_home = url_path_join(self.hub.base_url, 'home')
         message_html = ''
         if status_code == 503:
-            message_html = ' '.join([
-                "Your server appears to be down.",
-                "Try restarting it <a href='%s'>from the hub</a>" % hub_home
-            ])
+            message_html = ' '.join(
+                [
+                    "Your server appears to be down.",
+                    f"Try restarting it <a href='{hub_home}'>from the hub</a>",
+                ]
+            )
         ns = dict(
             status_code=status_code,
             status_message=status_message,
@@ -342,7 +346,7 @@ class ProxyErrorHandler(BaseHandler):
         self.set_header('Content-Type', 'text/html')
         # render the template
         try:
-            html = self.render_template('%s.html' % status_code, **ns)
+            html = self.render_template(f'{status_code}.html', **ns)
         except TemplateNotFound:
             self.log.debug("No template for %d", status_code)
             html = self.render_template('error.html', **ns)

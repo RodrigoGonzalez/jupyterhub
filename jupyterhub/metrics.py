@@ -108,9 +108,7 @@ class ServerPollStatus(Enum):
     @classmethod
     def from_status(cls, status):
         """Return enum string for a given poll status"""
-        if status is None:
-            return cls.running
-        return cls.stopped
+        return cls.running if status is None else cls.stopped
 
     def __str__(self):
         return self.value
@@ -137,6 +135,6 @@ def prometheus_log_method(handler):
     """
     REQUEST_DURATION_SECONDS.labels(
         method=handler.request.method,
-        handler='{}.{}'.format(handler.__class__.__module__, type(handler).__name__),
-        code=handler.get_status()
+        handler=f'{handler.__class__.__module__}.{type(handler).__name__}',
+        code=handler.get_status(),
     ).observe(handler.request.request_time())

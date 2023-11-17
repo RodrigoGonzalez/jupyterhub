@@ -52,10 +52,7 @@ def check_db_locks(func):
 def find_user(db, name, app=None):
     """Find user in database."""
     orm_user = db.query(orm.User).filter(orm.User.name == name).first()
-    if app is None:
-        return orm_user
-    else:
-        return app.users[orm_user.id]
+    return orm_user if app is None else app.users[orm_user.id]
 
 
 def add_user(db, app=None, **kwargs):
@@ -68,10 +65,7 @@ def add_user(db, app=None, **kwargs):
         for attr, value in kwargs.items():
             setattr(orm_user, attr, value)
     db.commit()
-    if app:
-        return app.users[orm_user.id]
-    else:
-        return orm_user
+    return app.users[orm_user.id] if app else orm_user
 
 
 def auth_header(db, name):
@@ -80,7 +74,7 @@ def auth_header(db, name):
     if user is None:
         user = add_user(db, name=name)
     token = user.new_api_token()
-    return {'Authorization': 'token %s' % token}
+    return {'Authorization': f'token {token}'}
 
 
 @check_db_locks
@@ -132,8 +126,11 @@ def test_auth_api(app):
     )
     assert r.status_code == 403
 
-    r = yield api_request(app, 'authorizations/token', api_token,
-        headers={'Authorization': 'token: %s' % user.cookie_id},
+    r = yield api_request(
+        app,
+        'authorizations/token',
+        api_token,
+        headers={'Authorization': f'token: {user.cookie_id}'},
     )
     assert r.status_code == 403
 
@@ -231,7 +228,7 @@ def fill_user(model):
     return model
 
 
-TIMESTAMP = normalize_timestamp(datetime.now().isoformat() + 'Z')
+TIMESTAMP = normalize_timestamp(f'{datetime.now().isoformat()}Z')
 
 @mark.user
 @mark.gen_test
@@ -284,9 +281,7 @@ def test_get_self(app):
     )
     db.add(oauth_token)
     db.commit()
-    r = yield api_request(app, 'user', headers={
-        'Authorization': 'token ' + token,
-    })
+    r = yield api_request(app, 'user', headers={'Authorization': f'token {token}'})
     r.raise_for_status()
     model = r.json()
     assert model['name'] == u.name
@@ -573,7 +568,7 @@ def test_spawn(app):
     status = yield app_user.spawner.poll()
     assert status is None
 
-    assert spawner.server.base_url == ujoin(app.base_url, 'user/%s' % name) + '/'
+    assert spawner.server.base_url == f"{ujoin(app.base_url, f'user/{name}')}/"
     url = public_url(app, user)
     r = yield async_requests.get(url)
     assert r.status_code == 200
@@ -602,7 +597,7 @@ def test_spawn(app):
     after_servers = sorted(db.query(orm.Server), key=lambda s: s.url)
     assert before_servers == after_servers
     tokens = list(db.query(orm.APIToken).filter(orm.APIToken.user_id == user.id))
-    assert tokens == []
+    assert not tokens
     assert app.users.count_active_users()['pending'] == 0
 
 
@@ -767,7 +762,7 @@ def test_progress(request, app, no_patience, slow_spawn):
     url = app_user.url
     assert evt == {
         'progress': 100,
-        'message': 'Server ready at {}'.format(url),
+        'message': f'Server ready at {url}',
         'html_message': 'Server ready at <a href="{0}">{0}</a>'.format(url),
         'url': url,
         'ready': True,
@@ -873,10 +868,7 @@ def test_progress_bad_slow(request, app, no_patience, slow_bad_spawn):
 async def progress_forever():
     """progress function that yields messages forever"""
     for i in range(1, 10):
-        await yield_({
-            'progress': i,
-            'message': 'Stage %s' % i,
-        })
+        await yield_({'progress': i, 'message': f'Stage {i}'})
         # wait a long time before the next event
         await gen.sleep(10)
 
@@ -1202,9 +1194,7 @@ def test_token_as_user_deprecated(app, as_user, for_user, status):
     if for_user != 'missing':
         add_user(app.db, app, name=for_user)
     data = {'username': for_user}
-    headers = {
-        'Authorization': 'token %s' % u.new_api_token(),
-    }
+    headers = {'Authorization': f'token {u.new_api_token()}'}
     r = yield api_request(app, 'authorizations', 'token',
         method='post',
         data=json.dumps(data),
@@ -1233,10 +1223,7 @@ def test_get_new_token(app, headers, status, note, expires_in):
         options['note'] = note
     if expires_in:
         options['expires_in'] = expires_in
-    if options:
-        body = json.dumps(options)
-    else:
-        body = ''
+    body = json.dumps(options) if options else ''
     # request a new token
     r = yield api_request(app, 'users/admin/tokens',
         method='post',
@@ -1293,9 +1280,7 @@ def test_token_for_user(app, as_user, for_user, status):
     if for_user != 'missing':
         add_user(app.db, app, name=for_user)
     data = {'username': for_user}
-    headers = {
-        'Authorization': 'token %s' % u.new_api_token(),
-    }
+    headers = {'Authorization': f'token {u.new_api_token()}'}
     r = yield api_request(app, 'users', for_user, 'tokens',
         method='post',
         data=json.dumps(data),
@@ -1316,7 +1301,7 @@ def test_token_for_user(app, as_user, for_user, status):
     if for_user == as_user:
         note = 'Requested via api'
     else:
-        note = 'Requested via api by user %s' % as_user
+        note = f'Requested via api by user {as_user}'
     assert reply['note'] == note
 
 
@@ -1368,9 +1353,7 @@ def test_token_list(app, as_user, for_user, status):
     u = add_user(app.db, app, name=as_user)
     if for_user != 'missing':
         for_user_obj = add_user(app.db, app, name=for_user)
-    headers = {
-        'Authorization': 'token %s' % u.new_api_token(),
-    }
+    headers = {'Authorization': f'token {u.new_api_token()}'}
     r = yield api_request(app, 'users', for_user, 'tokens',
         headers=headers,
     )
@@ -1583,7 +1566,7 @@ def test_get_services(app, mockservice_url):
 def test_get_service(app, mockservice_url):
     mockservice = mockservice_url
     db = app.db
-    r = yield api_request(app, 'services/%s' % mockservice.name)
+    r = yield api_request(app, f'services/{mockservice.name}')
     r.raise_for_status()
     assert r.status_code == 200
 
@@ -1598,14 +1581,14 @@ def test_get_service(app, mockservice_url):
         'info': {},
     }
 
-    r = yield api_request(app, 'services/%s' % mockservice.name,
-        headers={
-            'Authorization': 'token %s' % mockservice.api_token
-        }
+    r = yield api_request(
+        app,
+        f'services/{mockservice.name}',
+        headers={'Authorization': f'token {mockservice.api_token}'},
     )
     r.raise_for_status()
-    r = yield api_request(app, 'services/%s' % mockservice.name,
-        headers=auth_header(db, 'user'),
+    r = yield api_request(
+        app, f'services/{mockservice.name}', headers=auth_header(db, 'user')
     )
     assert r.status_code == 403
 

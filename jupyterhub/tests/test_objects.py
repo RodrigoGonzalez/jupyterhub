@@ -39,20 +39,7 @@ def test_bind_url(bind_url, attrs):
 _hostname = socket.gethostname()
 
 
-@pytest.mark.parametrize(
-    'ip, port, attrs',
-    [
-        (
-            '', 123,
-            {
-                'ip': '',
-                'port': 123,
-                'host': 'http://{}:123'.format(_hostname),
-                'url': 'http://{}:123/x/'.format(_hostname),
-                'bind_url': 'http://*:123/x/',
-            }
-        ),
-        (
+@pytest.mark.parametrize('ip, port, attrs', [('', 123, {'ip': '', 'port': 123, 'host': f'http://{_hostname}:123', 'url': f'http://{_hostname}:123/x/', 'bind_url': 'http://*:123/x/'}), (
             '127.0.0.1', 999,
             {
                 'ip': '127.0.0.1',
@@ -61,9 +48,7 @@ _hostname = socket.gethostname()
                 'url': 'http://127.0.0.1:999/x/',
                 'bind_url': 'http://127.0.0.1:999/x/',
             }
-        ),
-    ]
-)
+        )])
 def test_ip_port(ip, port, attrs):
     s = Server(ip=ip, port=port, base_url='/x/')
     for attr, value in attrs.items():

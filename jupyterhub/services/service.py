@@ -70,16 +70,11 @@ class _MockUser(HasTraits):
     def url(self):
         if not self.server:
             return ''
-        if self.host:
-            return self.host + self.server.base_url
-        else:
-            return self.server.base_url
+        return self.host + self.server.base_url if self.host else self.server.base_url
 
     @property
     def base_url(self):
-        if not self.server:
-            return ''
-        return self.server.base_url
+        return '' if not self.server else self.server.base_url
 
 # We probably shouldn't use a Spawner here,
 # but there are too many concepts to share.
@@ -99,10 +94,7 @@ class _ServiceSpawner(LocalProcessSpawner):
         return set_user_setuid(name, chdir=False)
 
     def user_env(self, env):
-        if not self.user.name:
-            return env
-        else:
-            return super().user_env(env)
+        return env if not self.user.name else super().user_env(env)
 
     def start(self):
         """Start the process"""
@@ -244,7 +236,7 @@ class Service(LoggingConfigurable):
     ).tag(input=True)
     @default('oauth_client_id')
     def _default_client_id(self):
-        return 'service-%s' % self.name
+        return f'service-{self.name}'
 
     oauth_redirect_uri = Unicode(
         help="""OAuth redirect URI for this service.
@@ -270,14 +262,11 @@ class Service(LoggingConfigurable):
 
     @property
     def server(self):
-        if self.orm.server:
-            return Server.from_orm(self.orm.server)
-        else:
-            return None
+        return Server.from_orm(self.orm.server) if self.orm.server else None
 
     @property
     def prefix(self):
-        return url_path_join(self.base_url, 'services', self.name + '/')
+        return url_path_join(self.base_url, 'services', f'{self.name}/')
 
     @property
     def proxy_spec(self):
@@ -298,7 +287,7 @@ class Service(LoggingConfigurable):
     def start(self):
         """Start a managed service"""
         if not self.managed:
-            raise RuntimeError("Cannot start unmanaged service %s" % self)
+            raise RuntimeError(f"Cannot start unmanaged service {self}")
         self.log.info("Starting service %r: %r", self.name, self.command)
         env = {}
         env.update(self.environment)
@@ -346,7 +335,7 @@ class Service(LoggingConfigurable):
         """Stop a managed service"""
         self.log.debug("Stopping service %s", self.name)
         if not self.managed:
-            raise RuntimeError("Cannot stop unmanaged service %s" % self)
+            raise RuntimeError(f"Cannot stop unmanaged service {self}")
         if self.spawner:
             if self.orm.server:
                 self.db.delete(self.orm.server)

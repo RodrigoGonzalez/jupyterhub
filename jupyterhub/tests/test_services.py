@@ -54,12 +54,12 @@ def test_managed_service(mockservice):
     assert proc.poll() is not None
 
     # ensure Hub notices service is down and brings it back up:
-    for i in range(20):
+    for _ in range(20):
         if service.proc is not proc:
             break
         else:
             yield gen.sleep(0.2)
-    
+
     assert service.proc.pid != first_pid
     assert service.proc.poll() is None
 
@@ -69,9 +69,9 @@ def test_proxy_service(app, mockservice_url):
     service = mockservice_url
     name = service.name
     yield app.proxy.get_all_routes()
-    url = public_url(app, service) + '/foo'
+    url = f'{public_url(app, service)}/foo'
     r = yield async_requests.get(url, allow_redirects=False)
-    path = '/services/{}/foo'.format(name)
+    path = f'/services/{name}/foo'
     r.raise_for_status()
 
     assert r.status_code == 200
@@ -93,7 +93,7 @@ def test_external_service(app):
         yield app.proxy.add_all_services(app._service_map)
 
         service = app._service_map[name]
-        url = public_url(app, service) + '/api/users'
+        url = f'{public_url(app, service)}/api/users'
         r = yield async_requests.get(url, allow_redirects=False)
         r.raise_for_status()
         assert r.status_code == 200

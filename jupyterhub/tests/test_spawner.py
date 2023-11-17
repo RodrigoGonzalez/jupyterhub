@@ -160,19 +160,19 @@ def test_spawner_poll(db):
         user.state = {}
     first_spawner.orm_spawner.state = first_spawner.get_state()
     assert 'pid' in first_spawner.orm_spawner.state
-    
+
     # create a new Spawner, loading from state of previous
     spawner = new_spawner(db, user=first_spawner.user)
     spawner.start_polling()
-    
+
     # wait for the process to get to the while True: loop
     yield gen.sleep(1)
     status = yield spawner.poll()
     assert status is None
-    
+
     # kill the process
     proc.terminate()
-    for i in range(10):
+    for _ in range(10):
         if proc.poll() is None:
             yield gen.sleep(1)
         else:
@@ -209,8 +209,8 @@ def test_string_formatting(db):
     name = s.user.name
     assert s.notebook_dir == 'user/{username}/'
     assert s.default_url == '/base/{username}'
-    assert s.format_string(s.notebook_dir) == 'user/%s/' % name
-    assert s.format_string(s.default_url) == '/base/%s' % name
+    assert s.format_string(s.notebook_dir) == f'user/{name}/'
+    assert s.format_string(s.default_url) == f'/base/{name}'
 
 
 @pytest.mark.gen_test

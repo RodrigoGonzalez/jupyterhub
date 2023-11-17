@@ -54,7 +54,7 @@ class APIHandler(BaseHandler):
 
         host_path = url_path_join(host, self.hub.base_url)
         referer_path = referer.split('://', 1)[-1]
-        if not (referer_path + '/').startswith(host_path):
+        if not f'{referer_path}/'.startswith(host_path):
             self.log.warning("Blocking Cross Origin API request.  Referer: %s, Host: %s",
                 referer, host_path)
             return False
@@ -66,9 +66,7 @@ class APIHandler(BaseHandler):
         # check referer only if there is a cookie user,
         # avoiding misleading "Blocking Cross Origin" messages
         # when there's no cookie set anyway.
-        if cookie_user and not self.check_referer():
-            return None
-        return cookie_user
+        return None if cookie_user and not self.check_referer() else cookie_user
 
     def get_json_body(self):
         """Return the body of the request as JSON data."""
@@ -97,9 +95,7 @@ class APIHandler(BaseHandler):
             except Exception:
                 pass
 
-            # construct the custom reason, if defined
-            reason = getattr(exception, 'reason', '')
-            if reason:
+            if reason := getattr(exception, 'reason', ''):
                 status_message = reason
 
         if exception and isinstance(exception, SQLAlchemyError):
@@ -108,10 +104,7 @@ class APIHandler(BaseHandler):
 
         self.set_header('Content-Type', 'application/json')
         if isinstance(exception, web.HTTPError):
-            # allow setting headers from exceptions
-            # since exception handler clears headers
-            headers = getattr(exception, 'headers', None)
-            if headers:
+            if headers := getattr(exception, 'headers', None):
                 for key, value in headers.items():
                     self.set_header(key, value)
             # Content-Length must be recalculated.
@@ -153,8 +146,8 @@ class APIHandler(BaseHandler):
                 expires_at = datetime.fromtimestamp(token.expires_at)
         else:
             raise TypeError(
-                "token must be an APIToken or OAuthAccessToken, not %s"
-                % type(token))
+                f"token must be an APIToken or OAuthAccessToken, not {type(token)}"
+            )
 
         if token.user:
             owner_key = 'user'
